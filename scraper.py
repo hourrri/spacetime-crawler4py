@@ -5,7 +5,10 @@ from bs4 import BeautifulSoup #parsing
 
 def scraper(url, resp):
     links = extract_next_links(url, resp)
-    return [link for link in links if is_valid(link)]
+    if links:
+        return [link for link in links if is_valid(link)]
+    else:
+        return []
 
 
 def extract_next_links(url, resp):
@@ -25,11 +28,29 @@ def extract_next_links(url, resp):
 
     beautSoup = BeautifulSoup(resp.raw_response.content, "html.parser")
     links = set()
-
+    canonical = set()
     #NEXT STEP: FIGURE OUT HOW TO GRAB TEXT AND PARSE WITH TOKENIZER: https://www.educative.io/answers/how-to-use-gettext-in-beautiful-soup
     bodyText = beautSoup.find('body')
     tokenizePage = bodyText.get_text()
+    tokenizePage = re.findall(r'\b\w+\b', tokenizePage) #this is for checking high textual or not
     #call tokenizer here: tokenizer should alr store everything so will wait for function to be done
+
+    #CHECK IF HIGH TEXTUAL CONTENT
+    #CHECK IF TOO LARGE FILE WITH LOW TEXTUAL CONTENT
+    tooLargeFile = 10000000 #too large for email, too large for web crawler 
+    tooLittleText = 50
+    contentLenBytes = len(resp.raw_response.content)
+    tokenizeLen = len(tokenizePage)
+
+    if contentLenBytes > tooLargeFile:
+        if tokenizeLen < tooLittleText:
+            return list()
+
+    #checks for canonical to reduce duplicates
+    for i in beautSoup.find_all("link", rel = "canonical"):
+        canonicalURL = i.get("href")
+        if canonicalURL:
+            canonical.add(canonicalURL)
 
 
     #find hyperlinks to crawl: https://www.scrapingbee.com/webscraping-questions/beautifulsoup/how-to-find-all-links-using-beautifulsoup-and-python/
@@ -37,20 +58,30 @@ def extract_next_links(url, resp):
         link = i.get("href")
         absLink = urljoin(url, link)
         if is_valid(absLink):
+            if url in canonical:
+                continue
             links.add(absLink)
 
     return list(links)
 
+
 def is_valid(url):
+
+
     # Decide whether to crawl this url or not. 
     # If you decide to crawl it, return True; otherwise return False.
     # There are already some conditions that return False.
+
     try:
         parsed = urlparse(url)
+        #maybe add a dot in front of each one IF he says anything about futurehealth.ics not being ok
+        if not re.match(r'^(\w*.)(ics\.uci\.edu|cs\.uci\.edu|stat\.uci\.edu|informatics\.uci\.edu)$', parsed.netloc):
+            return False
         if parsed.scheme not in set(["http", "https"]):
             return False
+        domain = parsed.netloc
         return not re.match(
-            r".*\.(css|js|bmp|gif|jpe?g|ico"
+            r".*.(css|js|bmp|gif|jpe?g|ico"
             + r"|png|tiff?|mid|mp2|mp3|mp4"
             + r"|wav|avi|mov|mpeg|ram|m4v|mkv|ogg|ogv|pdf"
             + r"|ps|eps|tex|ppt|pptx|doc|docx|xls|xlsx|names"
@@ -58,6 +89,18 @@ def is_valid(url):
             + r"|epub|dll|cnf|tgz|sha1"
             + r"|thmx|mso|arff|rtf|jar|csv"
             + r"|rm|smil|wmv|swf|wma|zip|rar|gz)$", parsed.path.lower())
+
+        try:
+            robot_parser = RobotFileParser()
+            robot_parser.set_url(domain + "/robots.txt")
+            robot_parser.read()
+            if(robot_parser.can_fetch("UCICrawler",url)):
+                return True
+            else:
+                return False
+        except URLError:#would I return false
+            return False
+
 
     except TypeError:
         print ("TypeError for ", parsed)
