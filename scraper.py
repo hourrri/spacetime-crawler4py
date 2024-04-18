@@ -51,6 +51,10 @@ def is_valid(url):
         parsed = urlparse(url)
         if parsed.scheme not in set(["http", "https"]):
             return False
+
+        if not re.match(r'^(\w*.)(ics.uci.edu|cs.uci.edu|stat.uci.edu|informatics.uci.edu)$', parsed.netloc):
+            return False
+        
         domain = parsed.netloc
         return not re.match(
             r".*\.(css|js|bmp|gif|jpe?g|ico"
@@ -67,11 +71,14 @@ def is_valid(url):
             robot_parser.set_url(domain + "/robots.txt")
             robot_parser.read()
             if(robot_parser.can_fetch("UCICrawler",url)):
+                if 
                 return True
             else:
                 return False
         except URLError:#would I return false
             return False
+
+            
         
 
     except TypeError:
