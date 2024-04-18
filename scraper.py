@@ -5,10 +5,8 @@ from bs4 import BeautifulSoup #parsing
 
 def scraper(url, resp):
     links = extract_next_links(url, resp)
-    if links != None:
-        return [link for link in links if is_valid(link)]
-    else:
-        return []
+    return [link for link in links if is_valid(link)]
+
 
 def extract_next_links(url, resp):
     # Implementation required.
@@ -21,21 +19,26 @@ def extract_next_links(url, resp):
     #         resp.raw_response.content: the content of the page! 
     # Return a list with the hyperlinks (as strings) scrapped from resp.raw_response.content
 
-    #QUESTION: worker.log and what the status tther means
-    # how to understand
-    if resp.status >= 400 or resp.status == 204:
+    #CHECK ALL ERRORS AND EXCEPTIONS WITHIN EXTRACT_NEXT_LINKS ARE COVERED
+    if (resp.status >= 400 or resp.status == 204):
         return list()
-        
-    #basic basic crawler
+
     beautSoup = BeautifulSoup(resp.raw_response.content, "html.parser")
     links = set()
 
-    #find hyperlinks: https://www.scrapingbee.com/webscraping-questions/beautifulsoup/how-to-find-all-links-using-beautifulsoup-and-python/
+    #NEXT STEP: FIGURE OUT HOW TO GRAB TEXT AND PARSE WITH TOKENIZER: https://www.educative.io/answers/how-to-use-gettext-in-beautiful-soup
+    bodyText = beautSoup.find('body')
+    tokenizePage = bodyText.get_text()
+    #call tokenizer here: tokenizer should alr store everything so will wait for function to be done
+
+
+    #find hyperlinks to crawl: https://www.scrapingbee.com/webscraping-questions/beautifulsoup/how-to-find-all-links-using-beautifulsoup-and-python/
     for i in beautSoup.find_all("a"):
         link = i.get("href")
         absLink = urljoin(url, link)
         if is_valid(absLink):
             links.add(absLink)
+
     return list(links)
 
 def is_valid(url):
