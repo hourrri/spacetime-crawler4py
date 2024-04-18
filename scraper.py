@@ -1,9 +1,14 @@
 import re
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urljoin
+
+from bs4 import BeautifulSoup #parsing
 
 def scraper(url, resp):
     links = extract_next_links(url, resp)
-    return [link for link in links if is_valid(link)]
+    if links != None:
+        return [link for link in links if is_valid(link)]
+    else:
+        return []
 
 def extract_next_links(url, resp):
     # Implementation required.
@@ -13,7 +18,7 @@ def extract_next_links(url, resp):
     # resp.error: when status is not 200, you can check the error here, if needed.
     # resp.raw_response: this is where the page actually is. More specifically, the raw_response has two parts:
     #         resp.raw_response.url: the url, again
-    #         resp.raw_response.content: the content of the page!
+    #         resp.raw_response.content: the content of the page! 
     # Return a list with the hyperlinks (as strings) scrapped from resp.raw_response.content
 
 
