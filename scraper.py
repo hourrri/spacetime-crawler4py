@@ -21,6 +21,11 @@ def extract_next_links(url, resp):
     #         resp.raw_response.content: the content of the page! 
     # Return a list with the hyperlinks (as strings) scrapped from resp.raw_response.content
 
+    #QUESTION: worker.log and what the status tther means
+    # how to understand
+    if resp.status >= 400 or resp.status == 204:
+        return list()
+        
     #basic basic crawler
     beautSoup = BeautifulSoup(resp.raw_response.content, "html.parser")
     links = set()
@@ -28,9 +33,9 @@ def extract_next_links(url, resp):
     #find hyperlinks: https://www.scrapingbee.com/webscraping-questions/beautifulsoup/how-to-find-all-links-using-beautifulsoup-and-python/
     for i in beautSoup.find_all("a"):
         link = i.get("href")
-        absLink = urljoin(urlparse(resp.url).scheme + "://" + urlparse(resp.url).netloc, link)
-        
-        links.add(absLink)
+        absLink = urljoin(url, link)
+        if is_valid(absLink):
+            links.add(absLink)
     return list(links)
 
 def is_valid(url):
