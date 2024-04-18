@@ -1,6 +1,8 @@
 import re
 from urllib.parse import urlparse, urljoin
 
+from urllib.robotparser import RobotFileParser
+
 from bs4 import BeautifulSoup #parsing
 
 def scraper(url, resp):
@@ -21,14 +23,26 @@ def extract_next_links(url, resp):
     #         resp.raw_response.content: the content of the page! 
     # Return a list with the hyperlinks (as strings) scrapped from resp.raw_response.content
 
+    #QUESTION: worker.log and what the status tther means
+    # how to understand
+    if resp.status >= 400 or resp.status == 204:
+        return list()
+        
+    #basic basic crawler
+    beautSoup = BeautifulSoup(resp.raw_response.content, "html.parser")
+    links = set()
 
-#use beautiful soup to read urls
-
-
-
-    return list()
+    #find hyperlinks: https://www.scrapingbee.com/webscraping-questions/beautifulsoup/how-to-find-all-links-using-beautifulsoup-and-python/
+    for i in beautSoup.find_all("a"):
+        link = i.get("href")
+        absLink = urljoin(url, link)
+        if is_valid(absLink):
+            links.add(absLink)
+    return list(links)
 
 def is_valid(url):
+
+
     # Decide whether to crawl this url or not. 
     # If you decide to crawl it, return True; otherwise return False.
     # There are already some conditions that return False.
@@ -37,6 +51,7 @@ def is_valid(url):
         parsed = urlparse(url)
         if parsed.scheme not in set(["http", "https"]):
             return False
+        domain = parsed.netloc
         return not re.match(
             r".*\.(css|js|bmp|gif|jpe?g|ico"
             + r"|png|tiff?|mid|mp2|mp3|mp4"
@@ -46,6 +61,18 @@ def is_valid(url):
             + r"|epub|dll|cnf|tgz|sha1"
             + r"|thmx|mso|arff|rtf|jar|csv"
             + r"|rm|smil|wmv|swf|wma|zip|rar|gz)$", parsed.path.lower())
+
+        try:
+            robot_parser = RobotFileParser()
+            robot_parser.set_url(domain + "/robots.txt")
+            robot_parser.read()
+            if(robot_parser.can_fetch("UCICrawler",url)):
+                return True
+            else:
+                return False
+        except URLError:#would I return false
+            return False
+        
 
     except TypeError:
         print ("TypeError for ", parsed)
