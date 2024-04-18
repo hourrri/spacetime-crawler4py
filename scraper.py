@@ -15,7 +15,7 @@ def scraper(url, resp):
     else:
         return []
 
-def extract_next_links(url, resp):
+def extract_next_links(url, resp): #maybe restart cache here?
     # Implementation required.
     # url: the URL that was used to get the page
     # resp.url: the actual url of the page
@@ -55,11 +55,14 @@ def is_valid(url):
         if parsed.scheme not in set(["http", "https"]):
             return False
 
-        if not re.match(r'^(\w*.)(ics.uci.edu|cs.uci.edu|stat.uci.edu|informatics.uci.edu)$', parsed.netloc):
+        if not re.match(r'^(\w*.)(ics.uci.edu|cs.uci.edu|stat.uci.edu|informatics.uci.edu)$', parsed.netloc):#filter out domains not valid for this assignment
             return False
 
-        if "/calendar?date=" in url:
+        if "/calendar?date=" in url:#calendars have traps
             return False
+
+        if "/?s=" in url:#if search page with will bring up a large amount of repeated information, trap
+            return False#but im not sure if i would be filtering out content that may be useful or unique to be found only through search
         
         domain = parsed.netloc
         return not re.match(
@@ -75,7 +78,7 @@ def is_valid(url):
         try:
             if(domain not in cache):#if not already in cache, process, if not dont send another request to be polite
                 robot_parser = RobotFileParser()
-                robot_parser.set_url(domain + "/robots.txt")
+                robot_parser.set_url(domain + "/robots.txt")#for the purposes of Assignment 2, since we are crawling uci.edu domains, we know that this is how their robot files are found and we dont need other methods
                 robot_parser.read()
             else:
                 robot_parser = cache[domain]
