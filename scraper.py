@@ -5,6 +5,9 @@ from urllib.robotparser import RobotFileParser
 
 from bs4 import BeautifulSoup #parsing
 
+
+cache = {}
+
 def scraper(url, resp):
     links = extract_next_links(url, resp)
     if links != None:
@@ -36,7 +39,7 @@ def extract_next_links(url, resp):
     for i in beautSoup.find_all("a"):
         link = i.get("href")
         absLink = urljoin(url, link)
-        if is_valid(absLink):
+        if is_valid(absLink):#consider checking for duplciates here, lowercase link and then check in list, uRLS are not case sensitive but using find to find them iwll be 
             links.add(absLink)
     return list(links)
 
@@ -54,6 +57,9 @@ def is_valid(url):
 
         if not re.match(r'^(\w*.)(ics.uci.edu|cs.uci.edu|stat.uci.edu|informatics.uci.edu)$', parsed.netloc):
             return False
+
+        if "/calendar?date=" in url:
+            return False
         
         domain = parsed.netloc
         return not re.match(
@@ -67,11 +73,14 @@ def is_valid(url):
             + r"|rm|smil|wmv|swf|wma|zip|rar|gz)$", parsed.path.lower())
 
         try:
-            robot_parser = RobotFileParser()
-            robot_parser.set_url(domain + "/robots.txt")
-            robot_parser.read()
+            if(domain not in cache):#if not already in cache, process, if not dont send another request to be polite
+                robot_parser = RobotFileParser()
+                robot_parser.set_url(domain + "/robots.txt")
+                robot_parser.read()
+            else:
+                robot_parser = cache[domain]
+            
             if(robot_parser.can_fetch("UCICrawler",url)):
-                if 
                 return True
             else:
                 return False
