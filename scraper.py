@@ -22,45 +22,57 @@ def extract_next_links(url, resp):
     #         resp.raw_response.content: the content of the page! 
     # Return a list with the hyperlinks (as strings) scrapped from resp.raw_response.content
 
-    #CHECK ALL ERRORS AND EXCEPTIONS WITHIN EXTRACT_NEXT_LINKS ARE COVERED
-    if (resp.status >= 400 or resp.status == 204):
+    #PART 1: CRAWL POLITELY
+    try:
+        beautSoup = BeautifulSoup(resp.raw_response.content, "html.parser")
+    except:
         return list()
-
-    beautSoup = BeautifulSoup(resp.raw_response.content, "html.parser")
+        
     links = set()
     canonical = set()
-    #NEXT STEP: FIGURE OUT HOW TO GRAB TEXT AND PARSE WITH TOKENIZER: https://www.educative.io/answers/how-to-use-gettext-in-beautiful-soup
-    bodyText = beautSoup.find('body')
-    tokenizePage = bodyText.get_text()
-    tokenizePage = re.findall(r'\b\w+\b', tokenizePage) #this is for checking high textual or not
-    #call tokenizer here: tokenizer should alr store everything so will wait for function to be done
 
-    #CHECK IF HIGH TEXTUAL CONTENT
-    #CHECK IF TOO LARGE FILE WITH LOW TEXTUAL CONTENT
-    tooLargeFile = 10000000 #too large for email, too large for web crawler 
-    tooLittleText = 50
-    contentLenBytes = len(resp.raw_response.content)
-    tokenizeLen = len(tokenizePage)
+    if resp.status >= 400 or resp.status == 204 or resp.status == 404 or resp.status == 601 or resp.status == 600:
+        return list()
 
-    if contentLenBytes > tooLargeFile:
-        if tokenizeLen < tooLittleText:
-            return list()
-
-    #checks for canonical to reduce duplicates
+    
+    #checks for canonical to reduce duplicates; will change after videos on near ssimilarity and perfect similaritty
     for i in beautSoup.find_all("link", rel = "canonical"):
         canonicalURL = i.get("href")
         if canonicalURL:
             canonical.add(canonicalURL)
-
-
+    
     #find hyperlinks to crawl: https://www.scrapingbee.com/webscraping-questions/beautifulsoup/how-to-find-all-links-using-beautifulsoup-and-python/
+    #also, this finds all links
     for i in beautSoup.find_all("a"):
         link = i.get("href")
         absLink = urljoin(url, link)
         if is_valid(absLink):
-            if url in canonical:
+            absLink = absLink.split("#")[0] #normalizing the link
+            if absLink in canonical:
                 continue
             links.add(absLink)
+
+
+    #PART 2: PARSE
+    #NEXT STEP: FIGURE OUT HOW TO GRAB TEXT AND PARSE WITH TOKENIZER: https://www.educative.io/answers/how-to-use-gettext-in-beautiful-soup
+    bodyText = beautSoup.find('body')
+    try:
+        tokenizePage = bodyText.get_text()
+        tokenizePage = re.findall(r'\b\w+\b', tokenizePage) #this is for checking high textual or not
+    except AttributeError:
+        return list()
+
+
+    # Check content length and token length for each link after they've been added to the set
+    for link in list(links):
+        tooLargeFile = 10000000  # Too large for email, too large for web crawler
+        tooLittleText = 50
+        contentLenBytes = len(resp.raw_response.content)
+        tokenizeLen = len(tokenizePage)
+        if contentLenBytes > tooLargeFile or tokenizeLen < tooLittleText:
+            links.remove(link)
+        
+    #tokenizer here, albert code here
 
     return list(links)
 
@@ -75,8 +87,12 @@ def is_valid(url):
     try:
         parsed = urlparse(url)
         #maybe add a dot in front of each one IF he says anything about futurehealth.ics not being ok
-        if not re.match(r'^(\w*.)(ics\.uci\.edu|cs\.uci\.edu|stat\.uci\.edu|informatics\.uci\.edu)$', parsed.netloc):
+        if not re.match(r'^(\w*.)(ics.uci.edu|cs.uci.edu|stat.uci.edu|informatics.uci.edu)$', parsed.netloc):
             return False
+
+        if "/calendar?date=" in url:
+            return False
+
         if parsed.scheme not in set(["http", "https"]):
             return False
         domain = parsed.netloc
@@ -89,11 +105,14 @@ def is_valid(url):
             + r"|epub|dll|cnf|tgz|sha1"
             + r"|thmx|mso|arff|rtf|jar|csv"
             + r"|rm|smil|wmv|swf|wma|zip|rar|gz)$", parsed.path.lower())
-
         try:
-            robot_parser = RobotFileParser()
-            robot_parser.set_url(domain + "/robots.txt")
-            robot_parser.read()
+            if(domain not in cache):#if not already in cache, process, if not dont send another request to be polite
+                robot_parser = RobotFileParser()
+                robot_parser.set_url(domain + "/robots.txt")
+                robot_parser.read()
+            else:
+                robot_parser = cache[domain]
+            
             if(robot_parser.can_fetch("UCICrawler",url)):
                 return True
             else:
@@ -105,3 +124,17 @@ def is_valid(url):
     except TypeError:
         print ("TypeError for ", parsed)
         raise
+    #     try:
+    #         robot_parser = RobotFileParser()
+    #         robot_parser.set_url(domain + "/robots.txt")
+    #         robot_parser.read()
+    #         if(robot_parser.can_fetch("UCICrawler",url)):
+    #             return True
+    #         else:
+    #             return False
+    #     except URLError:#would I return false
+    #         return False
+
+    # except TypeError:
+    #     print ("TypeError for ", parsed)
+    #     raise
