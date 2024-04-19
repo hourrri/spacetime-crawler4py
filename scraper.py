@@ -58,11 +58,27 @@ def is_valid(url):
         if not re.match(r'^(\w*.)(ics.uci.edu|cs.uci.edu|stat.uci.edu|informatics.uci.edu)$', parsed.netloc):#filter out domains not valid for this assignment
             return False
 
+        if not re.match(r'^(\w*.)(ics.uci.edu|cs.uci.edu|stat.uci.edu|informatics.uci.edu)$', parsed.netloc):#filter out domains not valid for this assignment
+            return False
+
+        base_url = parsed.scheme + "://" + parsed.netloc + parsed.path
+        if parsed.fragment:
+            # If there's a fragment, consider only the base URL without the fragment
+            return False
+
         if "/calendar?date=" in url:#calendars have traps
             return False
 
+        url_path = parsed.path
+        if '.' in url_path:
+            ext = url_path[url_path.rfind('.'):]  # This gets the substring from the last period to the end.
+        else:
+            ext = ''  # No extension found
+
+
         if "/?s=" in url:#if search page with will bring up a large amount of repeated information, trap
             return False#but im not sure if i would be filtering out content that may be useful or unique to be found only through search
+    
         
         domain = parsed.netloc
         return not re.match(
@@ -80,6 +96,7 @@ def is_valid(url):
                 robot_parser = RobotFileParser()
                 robot_parser.set_url(domain + "/robots.txt")#for the purposes of Assignment 2, since we are crawling uci.edu domains, we know that this is how their robot files are found and we dont need other methods
                 robot_parser.read()
+                cache[domain] = robot_parser
             else:
                 robot_parser = cache[domain]
             
