@@ -1,7 +1,12 @@
 import re
 from urllib.parse import urlparse, urljoin
 
+from urllib.robotparser import RobotFileParser
+
+from urllib.error import URLError
+
 from bs4 import BeautifulSoup #parsing
+cache = {}
 
 def scraper(url, resp):
     links = extract_next_links(url, resp)
@@ -34,6 +39,7 @@ def extract_next_links(url, resp):
     if resp.status >= 400 or resp.status == 204 or resp.status == 404 or resp.status == 601 or resp.status == 600:
         return list()
 
+
     
     #checks for canonical to reduce duplicates; will change after videos on near ssimilarity and perfect similaritty
     for i in beautSoup.find_all("link", rel = "canonical"):
@@ -46,8 +52,8 @@ def extract_next_links(url, resp):
     for i in beautSoup.find_all("a"):
         link = i.get("href")
         absLink = urljoin(url, link)
+        absLink = absLink.split("#")[0] #normalizing the link
         if is_valid(absLink):
-            absLink = absLink.split("#")[0] #normalizing the link
             if absLink in canonical:
                 continue
             links.add(absLink)
@@ -67,7 +73,7 @@ def extract_next_links(url, resp):
     for link in list(links):
         tooLargeFile = 10000000  # Too large for email, too large for web crawler
         tooLittleText = 50
-        contentLenBytes = len(resp.raw_response.content)
+        contentLenBytes = len(resp.raw_response.content) 
         tokenizeLen = len(tokenizePage)
         if contentLenBytes > tooLargeFile or tokenizeLen < tooLittleText:
             links.remove(link)
@@ -75,6 +81,7 @@ def extract_next_links(url, resp):
     #tokenizer here, albert code here
 
     return list(links)
+
 
 
 def is_valid(url):
@@ -86,55 +93,58 @@ def is_valid(url):
 
     try:
         parsed = urlparse(url)
-        #maybe add a dot in front of each one IF he says anything about futurehealth.ics not being ok
-        if not re.match(r'^(\w*.)(ics.uci.edu|cs.uci.edu|stat.uci.edu|informatics.uci.edu)$', parsed.netloc):
-            return False
-
-        if "/calendar?date=" in url:
-            return False
-
         if parsed.scheme not in set(["http", "https"]):
             return False
-        domain = parsed.netloc
-        return not re.match(
-            r".*.(css|js|bmp|gif|jpe?g|ico"
-            + r"|png|tiff?|mid|mp2|mp3|mp4"
-            + r"|wav|avi|mov|mpeg|ram|m4v|mkv|ogg|ogv|pdf"
-            + r"|ps|eps|tex|ppt|pptx|doc|docx|xls|xlsx|names"
-            + r"|data|dat|exe|bz2|tar|msi|bin|7z|psd|dmg|iso"
-            + r"|epub|dll|cnf|tgz|sha1"
-            + r"|thmx|mso|arff|rtf|jar|csv"
-            + r"|rm|smil|wmv|swf|wma|zip|rar|gz)$", parsed.path.lower())
+
+        if not re.match(r'^(\w*.)(ics.uci.edu|cs.uci.edu|stat.uci.edu|informatics.uci.edu)$', parsed.netloc):#filter out domains not valid for this assignment
+            return False
+
+        base_url = parsed.scheme + "://" + parsed.netloc + parsed.path
+        if parsed.fragment:
+            # If there's a fragment, consider only the base URL without the fragment
+            return False
+
+        if "/calendar?date=" in url:#calendars have traps
+            return False
+
+        if "/?s=" in url:#if search page with will bring up a large amount of repeated information, trap
+            return False#but im not sure if i would be filtering out content that may be useful or unique to be found only through search
+
+        url_path = parsed.path
+        if '.' in url_path:
+            ext = url_path[url_path.rfind('.'):]  # This gets the substring from the last period to the end.
+        else:
+            ext = ''  # No extension found
+
+        if(".php" in ext):
+            return False
+    
+    
         try:
-            if(domain not in cache):#if not already in cache, process, if not dont send another request to be polite
+            if((parsed.netloc) not in cache):#if not already in cache, process, if not dont send another request to be polite
                 robot_parser = RobotFileParser()
-                robot_parser.set_url(domain + "/robots.txt")
+                robot_parser.set_url(parsed.scheme + "://" +(parsed.netloc) + "/robots.txt")#for the purposes of Assignment 2, since we are crawling uci.edu domains, we know that this is how their robot files are found and we dont need other methods
                 robot_parser.read()
+                cache[parsed.netloc] = robot_parser
             else:
-                robot_parser = cache[domain]
+                robot_parser = cache[parsed.netloc]
             
             if(robot_parser.can_fetch("UCICrawler",url)):
-                return True
+                return not re.match(
+                    r".*\.(css|js|bmp|gif|jpe?g|ico"
+                    + r"|png|tiff?|mid|mp2|mp3|mp4"
+                    + r"|wav|avi|mov|mpeg|ram|m4v|mkv|ogg|ogv|pdf"
+                    + r"|ps|eps|tex|ppt|pptx|doc|docx|xls|xlsx|names"
+                    + r"|data|dat|exe|bz2|tar|msi|bin|7z|psd|dmg|iso"
+                    + r"|epub|dll|cnf|tgz|sha1"
+                    + r"|thmx|mso|arff|rtf|jar|csv"
+                    + r"|rm|smil|wmv|swf|wma|zip|rar|gz)$", parsed.path.lower())
+               #return True
             else:
                 return False
         except URLError:#would I return false
             return False
-
-
+        
     except TypeError:
         print ("TypeError for ", parsed)
         raise
-    #     try:
-    #         robot_parser = RobotFileParser()
-    #         robot_parser.set_url(domain + "/robots.txt")
-    #         robot_parser.read()
-    #         if(robot_parser.can_fetch("UCICrawler",url)):
-    #             return True
-    #         else:
-    #             return False
-    #     except URLError:#would I return false
-    #         return False
-
-    # except TypeError:
-    #     print ("TypeError for ", parsed)
-    #     raise
