@@ -146,6 +146,10 @@ def extract_next_links(url, resp):
                 # Increase the value of the token's key-value pair by 1
                 allFrequencies[token] += 1
 
+    # Remove all stop words from frequencies
+    for stopWord in stopWords:
+        allFrequencies.pop(stopWord, None)
+
     # Update and order 50 most common words based on computed frequencies
     global top50Words
     top50Words = (sorted(allFrequencies.items(), key=lambda item: (-item[1], item[0])))[:50]
