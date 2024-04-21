@@ -41,6 +41,7 @@ def extract_next_links(url, resp): #maybe restart cache here?
     for i in beautSoup.find_all("a"):
         link = i.get("href")
         absLink = urljoin(url, link)
+        absLink = absLink.split("#")[0] #normalizing the link
         if is_valid(absLink):#consider checking for duplciates here, lowercase link and then check in list, uRLS are not case sensitive but using find to find them iwll be 
             links.add(absLink)
     return list(links)
@@ -55,9 +56,6 @@ def is_valid(url):
     try:
         parsed = urlparse(url)
         if parsed.scheme not in set(["http", "https"]):
-            return False
-
-        if not re.match(r'^(\w*.)(ics.uci.edu|cs.uci.edu|stat.uci.edu|informatics.uci.edu)$', parsed.netloc):#filter out domains not valid for this assignment
             return False
 
         if not re.match(r'^(\w*.)(ics.uci.edu|cs.uci.edu|stat.uci.edu|informatics.uci.edu)$', parsed.netloc):#filter out domains not valid for this assignment
@@ -80,12 +78,15 @@ def is_valid(url):
         else:
             ext = ''  # No extension found
 
-        if(".php" in ext):
+        if(".php" in ext.lower()):#dynamic files
+            return False
+
+        if(".img" in ext.lower()):#non textual
             return False
     
     
         try:
-            if((parsed.netloc) not in cache):#if not already in cache, process, if not dont send another request to be polite
+            if((parsed.netloc) not in cache):#if not already in cache, process, if not dont send another request to be polite, parsed.netloc is domain
                 robot_parser = RobotFileParser()
                 robot_parser.set_url(parsed.scheme + "://" +(parsed.netloc) + "/robots.txt")#for the purposes of Assignment 2, since we are crawling uci.edu domains, we know that this is how their robot files are found and we dont need other methods
                 robot_parser.read()
@@ -103,15 +104,12 @@ def is_valid(url):
                     + r"|epub|dll|cnf|tgz|sha1"
                     + r"|thmx|mso|arff|rtf|jar|csv"
                     + r"|rm|smil|wmv|swf|wma|zip|rar|gz)$", parsed.path.lower())
+
                #return True
             else:
                 return False
         except URLError:#would I return false
             return False
-        
-
-
-
 
     except TypeError:
         print ("TypeError for ", parsed)
