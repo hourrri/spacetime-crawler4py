@@ -102,10 +102,38 @@ def extract_next_links(url, resp):
         if contentLenBytes > tooLargeFile or rawTextLen < tooLittleText:
             links.remove(link)
 
-    tokenizePage = [text for text in rawText.split(' ') if text.isalnum() and text.isascii() and text not in stopWords]
+    # Tokenizer adapted from Jacob's Assignment 1:
+
+    # List of Tokens
+    tokenizePage = []
+
+    # Token to be added
+    current_token = ""
+
+    # For each character in the body text of the page
+    for character in rawText:
+        # Check if character is alphanumeric
+        if character.isalnum() & character.isascii():
+            # Append current character to token to be added
+            current_token += character
+        else:
+            # Check if current token being created is not empty
+            if current_token != "":
+                # Add token to list of tokens
+                tokenizePage.append(current_token.lower())
+                # Clear current token
+                current_token = ""
+
+    # Add last token to list (if there is one)
+    if current_token != "":
+        tokenizePage.append(current_token.lower())
+
+    # Update the longest page if needed
     global longest
     if len(tokenizePage) > longest[1]:
         longest = (resp.url, len(tokenizePage))
+
+    # Computing word frequencies adapted from Jacob's Assignment 1:
 
     # For each token in the supplied list (on average, checked in constant time)
         for token in tokenizePage:
@@ -118,6 +146,7 @@ def extract_next_links(url, resp):
                 # Increase the value of the token's key-value pair by 1
                 allFrequencies[token] += 1
 
+    # Update and order 50 most common words based on computed frequencies
     global top50Words
     top50Words = (sorted(allFrequencies.items(), key=lambda item: (-item[1], item[0])))[:50]
 
