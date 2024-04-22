@@ -129,24 +129,24 @@ def extract_next_links(url, resp):
                 continue
             links.add(absLink)
 
-    global unique_urls, subdomain_page_counts
-    with open("visited_urls.txt", "a") as f:  # Open the file in append mode
-        for link in links:
-            # Add to unique_urls set
-            unique_urls.add(link)
+    # global unique_urls, subdomain_page_counts
+    # with open("visited_urls.txt", "a") as f:  # Open the file in append mode
+    #     for link in links:
+    #         # Add to unique_urls set
+    #         unique_urls.add(link)
 
-            # Subdomain counting for ics.uci.edu
-            parsed_url = urlparse(link)
-            domain = parsed_url.netloc
-            valid_domains = ["ics.uci.edu", "cs.uci.edu", "informatics.uci.edu", "stat.uci.edu"]
-            if any(domain.endswith(valid_domain) for valid_domain in valid_domains):
-                if domain not in subdomain_page_counts:
-                    subdomain_page_counts[domain] = set()
-                subdomain_page_counts[domain].add(link)
+    #         # Subdomain counting for ics.uci.edu
+    #         parsed_url = urlparse(link)
+    #         domain = parsed_url.netloc
+    #         valid_domains = ["ics.uci.edu", "cs.uci.edu", "informatics.uci.edu", "stat.uci.edu"]
+    #         if any(domain.endswith(valid_domain) for valid_domain in valid_domains):
+    #             if domain not in subdomain_page_counts:
+    #                 subdomain_page_counts[domain] = set()
+    #             subdomain_page_counts[domain].add(link)
 
-            # Log the link to the output file (if unique)
-            if link in unique_urls:
-                f.write(link + "\n")
+    #         # Log the link to the output file (if unique)
+    #         if link in unique_urls:
+    #             f.write(link + "\n")
         
 
    #DO NOT CHANGE THIS CODE! THIS IS NEEDED FOR PROPER LEN COUNT FOR THE COMPARISON BELOW. 
@@ -162,56 +162,56 @@ def extract_next_links(url, resp):
     # Check content length and token length for each link after they've been added to the set
     for link in list(links):
         tooLargeFile = 10000000  # Too large for email, too large for web crawler
-        tooLittleText = 50
+        tooLittleText = 250
         contentLenBytes = len(resp.raw_response.content) 
         tokenizeLen = len(rawText)
         if contentLenBytes > tooLargeFile or tokenizeLen < tooLittleText:
             links.remove(link)
 
 
-    # Tokenizer adapted from Jacob's Assignment 1:
+    # # Tokenizer adapted from Jacob's Assignment 1:
 
-    # List of Tokens
-    tokenizePage = []
+    # # List of Tokens
+    # tokenizePage = []
 
-    # Token to be added
-    current_token = ""
+    # # Token to be added
+    # current_token = ""
 
-    # For each character in the body text of the page
-    for character in rawText:
-        # Check if character is alphanumeric
-        if character.isalnum() & character.isascii():
-            # Append current character to token to be added
-            current_token += character
-        else:
-            # Check if current token being created is not empty
-            if current_token != "":
-                # Add token to list of tokens
-                tokenizePage.append(current_token.lower())
-                # Clear current token
-                current_token = ""
+    # # For each character in the body text of the page
+    # for character in rawText:
+    #     # Check if character is alphanumeric
+    #     if character.isalnum() & character.isascii():
+    #         # Append current character to token to be added
+    #         current_token += character
+    #     else:
+    #         # Check if current token being created is not empty
+    #         if current_token != "":
+    #             # Add token to list of tokens
+    #             tokenizePage.append(current_token.lower())
+    #             # Clear current token
+    #             current_token = ""
 
-    # Add last token to list (if there is one)
-    if current_token != "":
-        tokenizePage.append(current_token.lower())
+    # # Add last token to list (if there is one)
+    # if current_token != "":
+    #     tokenizePage.append(current_token.lower())
 
-    global longest
-    if len(tokenizePage) > longest[1]:
-        longest = (resp.url, len(tokenizePage))
+    # global longest
+    # if len(tokenizePage) > longest[1]:
+    #     longest = (resp.url, len(tokenizePage))
 
-    # For each token in the supplied list (on average, checked in constant time)
-        for token in tokenizePage:
-            # If the token's key-value pair in the dictionary has not been created yet
-            # (on average, checked in constant time)
-            if token not in allFrequencies:
-                # Create a key-value pair for the token
-                allFrequencies[token] = 1
-            else:
-                # Increase the value of the token's key-value pair by 1
-                allFrequencies[token] += 1
+    # # For each token in the supplied list (on average, checked in constant time)
+    #     for token in tokenizePage:
+    #         # If the token's key-value pair in the dictionary has not been created yet
+    #         # (on average, checked in constant time)
+    #         if token not in allFrequencies:
+    #             # Create a key-value pair for the token
+    #             allFrequencies[token] = 1
+    #         else:
+    #             # Increase the value of the token's key-value pair by 1
+    #             allFrequencies[token] += 1
 
-    global top50Words
-    top50Words = (sorted(allFrequencies.items(), key=lambda item: (-item[1], item[0])))[:50]
+    # global top50Words
+    # top50Words = (sorted(allFrequencies.items(), key=lambda item: (-item[1], item[0])))[:50]
 
     return list(links)
 
@@ -225,7 +225,6 @@ def is_valid(url):
 
     try:
         parsed = urlparse(url)
-
         if parsed.scheme not in set(["http", "https"]):
             return False
 
@@ -249,12 +248,9 @@ def is_valid(url):
         else:
             ext = ''  # No extension found
 
-        if(".php" in ext.lower()):#dynamic files
+        if(".php" in ext.lower() or ".img" in ext.lower() or ".mpg" in ext.lower() or ".gif" in ext.lower() or ".mp4" in ext.lower() or ".mov" in ext.lower() or ".avi" in ext.lower() or ".flv" in ext.lower()):#dynamic files or non textual files
             return False
 
-        if(".img" in ext.lower()):#non textual
-            return False
-    
     
         try:
             if((parsed.netloc) not in cache):#if not already in cache, process, if not dont send another request to be polite, parsed.netloc is domain
@@ -285,16 +281,3 @@ def is_valid(url):
     except TypeError:
         print ("TypeError for ", parsed)
         raise
-
-def report_stats():
-    global unique_urls, subdomain_page_counts, top50Words
-
-    print(f"Total unique pages found: {len(unique_urls)}")
-    print(f"Longest page: {longest[0]} with {longest[1]} words.")
-    print(f"Top 50 common words: {top50Words}")
-    
-    print("Subdomains within ics.uci.edu and their unique page counts:")
-    sorted_subdomains = sorted(subdomain_page_counts.items())  # Sorts by the subdomain (the dict key)
-    for domain, pages in sorted_subdomains:
-        if ".ics.uci.edu" in domain:  # Ensure we only report for ics.uci.edu subdomains
-            print(f"{domain}: {len(pages)} unique pages")
