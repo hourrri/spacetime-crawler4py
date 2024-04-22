@@ -78,12 +78,9 @@ def is_valid(url):
         else:
             ext = ''  # No extension found
 
-        if(".php" in ext.lower()):#dynamic files
+        if(".php" in ext.lower() or ".img" in ext.lower() or ".mpg" in ext.lower() or ".gif" in ext.lower() or ".mp4" in ext.lower() or ".mov" in ext.lower() or ".avi" in ext.lower() or ".flv" in ext.lower()):#dynamic files or non textual files
             return False
 
-        if(".img" in ext.lower()):#non textual
-            return False
-    
     
         try:
             if((parsed.netloc) not in cache):#if not already in cache, process, if not dont send another request to be polite, parsed.netloc is domain
