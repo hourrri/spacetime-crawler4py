@@ -69,7 +69,7 @@ def is_valid(url):
         if "/calendar?date=" in url:#calendars have traps
             return False
 
-        if "/?s=" in url:#if search page with will bring up a large amount of repeated information, trap
+        if "/?s=" in url:#if search page with will bring up a large amount of repeated information, trap, although this is very unlikely to occur, better to account for it 
             return False#but im not sure if i would be filtering out content that may be useful or unique to be found only through search
 
         url_path = parsed.path
@@ -80,7 +80,6 @@ def is_valid(url):
 
         if(".php" in ext.lower() or ".img" in ext.lower() or ".mpg" in ext.lower() or ".gif" in ext.lower() or ".mp4" in ext.lower() or ".mov" in ext.lower() or ".avi" in ext.lower() or ".flv" in ext.lower()):#dynamic files or non textual files
             return False
-
     
         try:
             if((parsed.netloc) not in cache):#if not already in cache, process, if not dont send another request to be polite, parsed.netloc is domain
