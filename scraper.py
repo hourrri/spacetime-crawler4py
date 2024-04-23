@@ -3,9 +3,10 @@ import re
 from collections import OrderedDict
 from urllib.parse import urlparse, urljoin
 from urllib.robotparser import RobotFileParser
-from urllib.error import URLError
+from urllib.error import URLError, HTTPError
 from bs4 import BeautifulSoup  # parsing
-from datasketch import MinHash, MinHashLSH
+from simhash import Simhash
+
 
 cache = {}
 
@@ -36,141 +37,78 @@ stopWords = ("a","about","above","after","again","against","all","am","an","and"
 longest = ("", 0)
 allFrequencies = dict()
 top50Words = OrderedDict()
-
-#
-fingerprintDict = {}
-def extract_shingles(content, k=5):
-    shingles = set()
-    words = content.split()  # Split content into words
-    for i in range(len(words) - k + 1):
-        shingle = ' '.join(words[i:i+k])  # Form shingles
-        shingles.add(shingle)
-    return shingles
-
-def compute_minhash(shingles, num_perm=128):
-    minhash = MinHash(num_perm=num_perm)
-    for shingle in shingles:
-        minhash.update(shingle.encode('utf-8'))
-    return minhash
-
-def check_similarity(content, threshold=0.8):
-    shingles = extract_shingles(content)
-    minhash = compute_minhash(shingles)
-    
-    for _, storedHash in fingerprintDict.items():
-        similarity = minhash.jaccard(storedHash)
-        if similarity >= threshold:
-            return True
-    
-    return False
+links = set()
+fingerPrint = list()
 
 
-def scraper(url, resp):
+def compute_and_check_similarity(content, threshold=3):
+
     try:
-        if resp.status == 200:
-            links = extract_next_links(url, resp)
-            return [link for link in links if is_valid(link)]
-        else:
+        simhash = Simhash(content)
+        for i in fingerPrint:
+            # Calculate Hamming distance between the current Simhash and stored hashes
+            distance = simhash.distance(i)
+            if distance <= threshold:
+                return True
+
+        return False
+
+    except Exception as ex:
+        print("An exception occurred during scraping:", ex)
+        return False
+
+def write_unique_urls_to_file():
+    global links
+    with open("visited_urls.txt", "a") as f:  # Open the file in append mode
+        for link in links:
+            # Subdomain counting for ics.uci.edu
+            parsed_url = urlparse(link)
+            domain = parsed_url.netloc
+            valid_domains = ["ics.uci.edu", "cs.uci.edu", "informatics.uci.edu", "stat.uci.edu"]
+            if any(domain.endswith(valid_domain) for valid_domain in valid_domains):
+                if domain not in subdomain_page_counts:
+                    subdomain_page_counts[domain] = set()
+                subdomain_page_counts[domain].add(link)
+
+            # Log the link to the output file (if unique)
+            if link not in unique_urls:
+                f.write(link + "\n")
+                unique_urls.add(link)
+
+
+def normalize_url(url):
+    parsed_url = urlparse(url)
+    normalized_scheme = parsed_url.scheme.lower()
+    normalized_netloc = parsed_url.netloc.lower().replace("www.", "")
+    normalized_path = parsed_url.path.rstrip("/")
+    normalized_url = f"{normalized_scheme}://{normalized_netloc}{normalized_path}"
+    return normalized_url
+
+
+def extract_tokens(resp):
+    try:
+        if not resp.raw_response or not resp.raw_response.content:
             return []
-    except:
+
+        text_content = ''
+        
+        try:
+            beautSoup = BeautifulSoup(resp.raw_response.content, "html5lib")
+        except Exception as e:
+            print("Unable to create Beautiful Soup:", e)
+            return []
+
+        for body in beautSoup.find_all('body'):
+            text_content += " " + body.getText()
+        
+        return re.findall(r'[a-zA-Z0-9]+', text_content.lower())
+    
+    except Exception as e:
+        print("An error occurred during token extraction:", e)
         return []
 
-def extract_next_links(url, resp):
-    # Implementation required.
-    # url: the URL that was used to get the page
-    # resp.url: the actual url of the page
-    # resp.status: the status code returned by the server. 200 is OK, you got the page. Other numbers mean that there was some kind of problem.
-    # resp.error: when status is not 200, you can check the error here, if needed.
-    # resp.raw_response: this is where the page actually is. More specifically, the raw_response has two parts:
-    #         resp.raw_response.url: the url, again
-    #         resp.raw_response.content: the content of the page!
-    # Return a list with the hyperlinks (as strings) scrapped from resp.raw_response.content
 
-    # PART 1: CRAWL POLITELY
-    if resp.status >= 400 or resp.status == 204:
-        return list()
-    # PART 2: PARSE
-    try:
-        beautSoup = BeautifulSoup(resp.raw_response.content, "html5lib")
-    except:
-        return list()
     
-    try:
-        content = resp.raw_response.content.decode('utf-8')
-    except UnicodeDecodeError:
-        content = resp.raw_response.content.decode('utf-8', 'ignore')  # Ignore problematic characters
-
-    if check_similarity(content):
-        return  # Move on to the next webpage without returning any links
-
-    fingerprintDict[url] = compute_minhash(extract_shingles(content))  # Store MinHash signature for future comparisons
-
-    canonical = set()
-
-    # checks for canonical to reduce duplicates; will change after videos on near similarity and perfect similarity
-    for i in beautSoup.find_all("link", rel="canonical"):
-        canonicalURL = i.get("href")
-        if canonicalURL:
-            canonical.add(canonicalURL)
-
-    links = set()
-
-    # find hyperlinks to crawl:
-    # https://www.scrapingbee.com/webscraping-questions/beautifulsoup/how-to-find-all-links-using-beautifulsoup-and-python/
-    # also, this finds all links
-    for i in beautSoup.find_all("a"):
-        link = i.get("href")
-        absLink = urljoin(url, link)
-        absLink = absLink.split("#")[0]  # normalizing the link
-        if resp.status >= 400 or resp.status == 204:
-            continue
-        if is_valid(absLink):
-            if any(canonicalLink in absLink for canonicalLink in canonical):
-                continue
-            links.add(absLink)
-
-    # global unique_urls, subdomain_page_counts
-    # with open("visited_urls.txt", "a") as f:  # Open the file in append mode
-    #     for link in links:
-    #         # Add to unique_urls set
-    #         unique_urls.add(link)
-
-    #         # Subdomain counting for ics.uci.edu
-    #         parsed_url = urlparse(link)
-    #         domain = parsed_url.netloc
-    #         valid_domains = ["ics.uci.edu", "cs.uci.edu", "informatics.uci.edu", "stat.uci.edu"]
-    #         if any(domain.endswith(valid_domain) for valid_domain in valid_domains):
-    #             if domain not in subdomain_page_counts:
-    #                 subdomain_page_counts[domain] = set()
-    #             subdomain_page_counts[domain].add(link)
-
-    #         # Log the link to the output file (if unique)
-    #         if link in unique_urls:
-    #             f.write(link + "\n")
-        
-
-   #DO NOT CHANGE THIS CODE! THIS IS NEEDED FOR PROPER LEN COUNT FOR THE COMPARISON BELOW. 
-    #PLS DO NOT CHANGE IT. TY.
-    bodyText = beautSoup.find('body')
-    try:
-        rawText = bodyText.get_text()
-        rawText = re.findall(r"\b[\w']+\b", rawText) #this is for checking high textual or not
-    except AttributeError:
-        return list()
-
-
-    # Check content length and token length for each link after they've been added to the set
-    for link in list(links):
-        tooLargeFile = 10000000  # Too large for email, too large for web crawler
-        tooLittleText = 250
-        contentLenBytes = len(resp.raw_response.content) 
-        tokenizeLen = len(rawText)
-        if contentLenBytes > tooLargeFile or tokenizeLen < tooLittleText:
-            links.remove(link)
-
-
-    # # Tokenizer adapted from Jacob's Assignment 1:
-
     # # List of Tokens
     # tokenizePage = []
 
@@ -191,40 +129,168 @@ def extract_next_links(url, resp):
     #             # Clear current token
     #             current_token = ""
 
-    # # Add last token to list (if there is one)
-    # if current_token != "":
-    #     tokenizePage.append(current_token.lower())
+    #     # Add last token to list (if there is one)
+    #     if current_token != "":
+    #         tokenizePage.append(current_token.lower())
 
-    # global longest
-    # if len(tokenizePage) > longest[1]:
-    #     longest = (resp.url, len(tokenizePage))
+    # return tokenizePage
+    
 
-    # # For each token in the supplied list (on average, checked in constant time)
-    #     for token in tokenizePage:
-    #         # If the token's key-value pair in the dictionary has not been created yet
-    #         # (on average, checked in constant time)
-    #         if token not in allFrequencies:
-    #             # Create a key-value pair for the token
-    #             allFrequencies[token] = 1
-    #         else:
-    #             # Increase the value of the token's key-value pair by 1
-    #             allFrequencies[token] += 1
+def scraper(url, resp):
+    try:
+        pageTokens = []  # Initialize pageTokens as a local variable
+        pageSimHash = 0
+        if resp.status == 200:
+            pageTokens = extract_tokens(resp)
+            pageSimHash = Simhash(' '.join(pageTokens))
+        
+            if compute_and_check_similarity(pageSimHash):
+                    return []    
+            else:
+                fingerPrint.append(pageSimHash)  # Store the Simhash for future comparisons
+                
+            try:
+                beautSoup = BeautifulSoup(resp.raw_response.content, "html5lib")
+            except Exception as e:
+                print("Unable to create Beautiful Soup.")
+                return
 
-    # global top50Words
-    # top50Words = (sorted(allFrequencies.items(), key=lambda item: (-item[1], item[0])))[:50]
+            bodyText = beautSoup.find('body')
+            try:
+                rawText = bodyText.get_text()
+                rawText = re.findall(r"\b[\w']+\b", rawText) #this is for checking high textual or not
+            except AttributeError:
+                print("Unable to make rawtext.")
+                return []
+
+            tooLargeFile = 10000000  # Too large for email, too large for web crawler
+            tooLittleText = 250
+            contentLenBytes = len(resp.raw_response.content) 
+            tokenizeLen = len(rawText)
+            if contentLenBytes > tooLargeFile or tokenizeLen < tooLittleText:
+                return []
+
+            unique_urls.add(url) #what we ended up actually crawling
+            with open("forMe.txt", "a") as f:  # Open the file in append mode
+                # Log the link to the output file (if unique)
+                # if link not in unique_urls:
+                f.write(url + "\n")
+            links = extract_next_links(url, resp)
+            return [link for link in links if is_valid(link)]
+        else:
+            return []
+    except HTTPError:
+        print("HTTPError")
+    except ConnectionError:
+        print("ConnectionError")
+    except Exception as e:
+        print("Exception ", e)
+
+
+def extract_next_links(url, resp):
+    # Implementation required.
+    # url: the URL that was used to get the page
+    # resp.url: the actual url of the page
+    # resp.status: the status code returned by the server. 200 is OK, you got the page. Other numbers mean that there was some kind of problem.
+    # resp.error: when status is not 200, you can check the error here, if needed.
+    # resp.raw_response: this is where the page actually is. More specifically, the raw_response has two parts:
+    #         resp.raw_response.url: the url, again
+    #         resp.raw_response.content: the content of the page!
+    # Return a list with the hyperlinks (as strings) scrapped from resp.raw_response.content
+
+    try:
+        if not resp.raw_response:
+            return list()
+
+        try:
+            beautSoup = BeautifulSoup(resp.raw_response.content, "html5lib")
+        except Exception as e:
+            print("Unable to create Beautiful Soup.")
+            return
+        
+        canonical = set()
+
+        for i in beautSoup.find_all("link", rel="canonical"):
+            canonicalURL = i.get("href")
+            if canonicalURL:
+                canonical.add(canonicalURL)
+
+        for i in beautSoup.find_all("a"):
+            link = i.get("href")
+            if link:
+                absLink = urljoin(url, link)
+                absLink = absLink.split("#")[0]  # Remove fragment identifiers
+                absLink = normalize_url(absLink)  # Normalize the link
+                if is_valid(absLink):
+                    if any(canonicalLink in absLink for canonicalLink in canonical):
+                        continue
+                    links.add(absLink)
+    except HTTPError:
+        print("HTTPError")
+    except ConnectionError:
+        print("ConnectionError")
+    except Exception as e:
+        print("Exception ", e)
+    
+        
+    # bodyText = beautSoup.find('body')
+    # try:
+    #     rawText = bodyText.get_text()
+    #     rawText = re.findall(r"\b[\w']+\b", rawText) #this is for checking high textual or not
+    # except AttributeError:
+    #     return list()
+
+    # # Check content length and token length for each link after they've been added to the set
+    # for link in list(links):
+    #     tooLargeFile = 10000000  # Too large for email, too large for web crawler
+    #     tooLittleText = 250
+    #     contentLenBytes = len(resp.raw_response.content) 
+    #     tokenizeLen = len(rawText)
+    #     if contentLenBytes > tooLargeFile or tokenizeLen < tooLittleText:
+    #         links.remove(link)
 
     return list(links)
+        #find hyperlinks to crawl
+    
+        #DO NOT CHANGE THIS CODE! THIS IS NEEDED FOR PROPER LEN COUNT FOR THE COMPARISON BELOW. 
+        #PLS DO NOT CHANGE IT. TY.
+        
+        #     # Update the longest page if needed
+        #     global longest
+        #     if len(tokenizePage) > longest[1]:
+        #         longest = (resp.url, len(tokenizePage))
+
+        #     # Computing word frequencies
+
+        #     # For each token in the supplied list
+        #     for token in tokenizePage:
+        #         # If the token's key-value pair in the dictionary has not been created yet
+        #         if token not in allFrequencies:
+        #             # Create a key-value pair for the token
+        #             allFrequencies[token] = 1
+        #         else:
+        #             # Increase the value of the token's key-value pair by 1
+        #             allFrequencies[token] += 1
+
+        #     # Remove all stop words from frequencies
+        #     for stopWord in stopWords:
+        #         allFrequencies.pop(stopWord, None)
+
+        #     # Update and order 50 most common words based on computed frequencies
+        #     global top50Words
+        #     top50Words = (sorted(allFrequencies.items(), key=lambda item: (-item[1], item[0])))[:50]
+
+
 
 
 def is_valid(url):
-
-
     # Decide whether to crawl this url or not. 
     # If you decide to crawl it, return True; otherwise return False.
     # There are already some conditions that return False.
 
     try:
         parsed = urlparse(url)
+
         if parsed.scheme not in set(["http", "https"]):
             return False
 
@@ -281,3 +347,23 @@ def is_valid(url):
     except TypeError:
         print ("TypeError for ", parsed)
         raise
+    except HTTPError:
+        print("HTTPError")
+    except ConnectionError:
+        print("ConnectionError")
+    except Exception as e:
+        print("Exception ", e)
+
+
+def report_stats():
+    global unique_urls, subdomain_page_counts, top50Words
+
+    print(f"Total unique pages found: {len(unique_urls)}")
+    print(f"Longest page: {longest[0]} with {longest[1]} words.")
+    print(f"Top 50 common words: {top50Words}")
+    
+    print("Subdomains within ics.uci.edu and their unique page counts:")
+    sorted_subdomains = sorted(subdomain_page_counts.items())  # Sorts by the subdomain (the dict key)
+    for domain, pages in sorted_subdomains:
+        if ".ics.uci.edu" in domain:  # Ensure we only report for ics.uci.edu subdomains
+            print(f"{domain}: {len(pages)} unique pages")
