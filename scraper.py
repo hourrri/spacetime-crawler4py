@@ -1,4 +1,5 @@
 
+
 import re
 from collections import OrderedDict
 from urllib.parse import urlparse, urljoin
@@ -39,14 +40,14 @@ allFrequencies = dict()
 top50Words = OrderedDict()
 links = set()
 fingerPrint = list()
+unique_url = set()
 
 
-def compute_and_check_similarity(content, threshold=3):
-
+def compute_and_check_similarity(content):
+    threshold = 5
     try:
         simhash = Simhash(content)
         for i in fingerPrint:
-            # Calculate Hamming distance between the current Simhash and stored hashes
             distance = simhash.distance(i)
             if distance <= threshold:
                 return True
@@ -58,9 +59,9 @@ def compute_and_check_similarity(content, threshold=3):
         return False
 
 def write_unique_urls_to_file():
-    global links
+    global unique_url
     with open("visited_urls.txt", "a") as f:  # Open the file in append mode
-        for link in links:
+        for link in unique_url:
             # Subdomain counting for ics.uci.edu
             parsed_url = urlparse(link)
             domain = parsed_url.netloc
@@ -71,18 +72,16 @@ def write_unique_urls_to_file():
                 subdomain_page_counts[domain].add(link)
 
             # Log the link to the output file (if unique)
-            if link not in unique_urls:
-                f.write(link + "\n")
-                unique_urls.add(link)
+            f.write(link + "\n")
 
 
-def normalize_url(url):
-    parsed_url = urlparse(url)
-    normalized_scheme = parsed_url.scheme.lower()
-    normalized_netloc = parsed_url.netloc.lower().replace("www.", "")
-    normalized_path = parsed_url.path.rstrip("/")
-    normalized_url = f"{normalized_scheme}://{normalized_netloc}{normalized_path}"
-    return normalized_url
+# def normalize_url(url):
+#     parsed_url = urlparse(url)
+#     normalized_scheme = parsed_url.scheme.lower()
+#     normalized_netloc = parsed_url.netloc.lower().replace("www.", "")
+#     normalized_path = parsed_url.path.rstrip("/")
+#     normalized_url = f"{normalized_scheme}://{normalized_netloc}{normalized_path}"
+#     return normalized_url
 
 
 def extract_tokens(resp):
@@ -137,6 +136,7 @@ def extract_tokens(resp):
     
 
 def scraper(url, resp):
+    global unique_url
     try:
         pageTokens = []  # Initialize pageTokens as a local variable
         pageSimHash = 0
@@ -170,7 +170,7 @@ def scraper(url, resp):
             if contentLenBytes > tooLargeFile or tokenizeLen < tooLittleText:
                 return []
 
-            unique_urls.add(url) #what we ended up actually crawling
+            unique_url.add(url) #what we ended up actually crawling
             with open("forMe.txt", "a") as f:  # Open the file in append mode
                 # Log the link to the output file (if unique)
                 # if link not in unique_urls:
@@ -220,7 +220,6 @@ def extract_next_links(url, resp):
             if link:
                 absLink = urljoin(url, link)
                 absLink = absLink.split("#")[0]  # Remove fragment identifiers
-                absLink = normalize_url(absLink)  # Normalize the link
                 if is_valid(absLink):
                     if any(canonicalLink in absLink for canonicalLink in canonical):
                         continue
@@ -231,23 +230,6 @@ def extract_next_links(url, resp):
         print("ConnectionError")
     except Exception as e:
         print("Exception ", e)
-    
-        
-    # bodyText = beautSoup.find('body')
-    # try:
-    #     rawText = bodyText.get_text()
-    #     rawText = re.findall(r"\b[\w']+\b", rawText) #this is for checking high textual or not
-    # except AttributeError:
-    #     return list()
-
-    # # Check content length and token length for each link after they've been added to the set
-    # for link in list(links):
-    #     tooLargeFile = 10000000  # Too large for email, too large for web crawler
-    #     tooLittleText = 250
-    #     contentLenBytes = len(resp.raw_response.content) 
-    #     tokenizeLen = len(rawText)
-    #     if contentLenBytes > tooLargeFile or tokenizeLen < tooLittleText:
-    #         links.remove(link)
 
     return list(links)
         #find hyperlinks to crawl
