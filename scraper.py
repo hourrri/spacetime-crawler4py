@@ -123,7 +123,7 @@ def tokenize_webpage(content):
     except:
         texts = ""
 
-    # Tokenize using regular expression to include words and numbers
+    # Tokenize
     for ch in texts:
         if (47 < ord(ch) < 58) or (64 < ord(ch) < 91) or (
                 96 < ord(ch) < 123):  # Simple check for alphanumeric characters
@@ -136,7 +136,7 @@ def tokenize_webpage(content):
     if word:  # if there's a word left at the end, add it to the list
         word_list.append(word.lower())
 
-    return [word for word in word_list if word not in stopWords]  # Exclude stopWords in the final list
+    return [word for word in word_list if word]
 
 
 def scraper(url, resp):
