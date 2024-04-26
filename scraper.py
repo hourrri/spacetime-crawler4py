@@ -45,16 +45,14 @@ def extract_next_links(url, resp): #maybe restart cache here?
         if is_valid(absLink):#consider checking for duplciates here, lowercase link and then check in list, uRLS are not case sensitive but using find to find them iwll be 
             links.add(absLink)
     return list(links)
-
 def is_valid(url):
-
-
     # Decide whether to crawl this url or not. 
     # If you decide to crawl it, return True; otherwise return False.
     # There are already some conditions that return False.
 
     try:
         parsed = urlparse(url)
+
         if parsed.scheme not in set(["http", "https"]):
             return False
 
@@ -66,11 +64,16 @@ def is_valid(url):
             # If there's a fragment, consider only the base URL without the fragment
             return False
 
-        if "/calendar?date=" in url:#calendars have traps
+        if "/calendar" in url:#calendars have traps
             return False
 
-        if "/?s=" in url:#if search page with will bring up a large amount of repeated information, trap, although this is very unlikely to occur, better to account for it 
+        if "/?s=" in url:#if search page with will bring up a large amount of repeated information, trap
             return False#but im not sure if i would be filtering out content that may be useful or unique to be found only through search
+
+        
+        if re.search("(\?share|/login|/signin|/auth|/account|/secure|/admin|\?attachment|&share|&ical|\?ical|/theme|/themes|/datasets.php)", url) is not None:
+            return False
+    
 
         url_path = parsed.path
         if '.' in url_path:
@@ -78,9 +81,10 @@ def is_valid(url):
         else:
             ext = ''  # No extension found
 
-        if(".php" in ext.lower() or ".img" in ext.lower() or ".mpg" in ext.lower() or ".gif" in ext.lower() or ".mp4" in ext.lower() or ".mov" in ext.lower() or ".avi" in ext.lower() or ".flv" in ext.lower()):#dynamic files or non textual files
+        if(".img" in ext.lower() or ".mpg" in ext.lower() or ".gif" in ext.lower()  or ".mov" in ext.lower() or ".flv" in ext.lower() or ".ical" in ext.lower() or ".ics" in ext.lower() or ".js" in ext.lower()):#dynamic files or non textual files
             return False
-    
+
+
         try:
             if((parsed.netloc) not in cache):#if not already in cache, process, if not dont send another request to be polite, parsed.netloc is domain
                 robot_parser = RobotFileParser()
@@ -91,6 +95,14 @@ def is_valid(url):
                 robot_parser = cache[parsed.netloc]
             
             if(robot_parser.can_fetch("UCICrawler",url)):
+
+                if(".php" == parsed.path.lower()):
+                    query = str(url).split(".php")
+                    if "/" in query[1] or len(query) > 2:
+                        return False
+                    if str(url).count("//") > 1:
+                        return False
+
                 return not re.match(
                     r".*\.(css|js|bmp|gif|jpe?g|ico"
                     + r"|png|tiff?|mid|mp2|mp3|mp4"
@@ -110,3 +122,10 @@ def is_valid(url):
     except TypeError:
         print ("TypeError for ", parsed)
         raise
+    except HTTPError:
+        print("HTTPError")
+    except ConnectionError:
+        print("ConnectionError")
+    except Exception as e:
+        print("Exception ", e)
+
