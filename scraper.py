@@ -339,8 +339,8 @@ def report_stats():
     print(f"Longest page: {longest[0]} with {longest[1]} words.")
 
     # Print the most common words excluding the stop words, sorted by frequency
-    most_common_words = [word for word in allFrequencies.most_common(50) if word[0] not in stopWords]
-    print("Top 50 most common words (excluding stop words):")
+    most_common_words = [word for word in allFrequencies.most_common(85) if word[0] not in stopWords and len(word[0]) > 1]
+    print("Top 50 most common words (excluding stop words and length 1 words):")
     for word, frequency in most_common_words:
         print(f"{word}: {frequency}")
 

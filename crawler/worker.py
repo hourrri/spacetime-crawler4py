@@ -13,10 +13,12 @@ class Worker(Thread):
         self.config = config
         self.frontier = frontier
         # basic check for requests in scraper
-        assert {getsource(scraper).find(req) for req in {"from requests import", "import requests"}} == {-1}, "Do not use requests in scraper.py"
-        assert {getsource(scraper).find(req) for req in {"from urllib.request import", "import urllib.request"}} == {-1}, "Do not use urllib.request in scraper.py"
+        assert {getsource(scraper).find(req) for req in {"from requests import", "import requests"}} == {
+            -1}, "Do not use requests in scraper.py"
+        assert {getsource(scraper).find(req) for req in {"from urllib.request import", "import urllib.request"}} == {
+            -1}, "Do not use urllib.request in scraper.py"
         super().__init__(daemon=True)
-        
+
     def run(self):
         while True:
             tbd_url = self.frontier.get_tbd_url()
@@ -31,4 +33,5 @@ class Worker(Thread):
             for scraped_url in scraped_urls:
                 self.frontier.add_url(scraped_url)
             self.frontier.mark_url_complete(tbd_url)
+            scraper.report_stats()
             time.sleep(self.config.time_delay)
