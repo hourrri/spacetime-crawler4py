@@ -1,12 +1,11 @@
 import re
-from collections import OrderedDict
+from collections import Counter, OrderedDict
 from urllib.parse import urlparse, urljoin
-
 from urllib.robotparser import RobotFileParser
-
-from urllib.error import URLError
-
+from urllib.error import URLError, HTTPError
 from bs4 import BeautifulSoup  # parsing
+from simhash import Simhash
+
 
 cache = {}
 
@@ -34,17 +33,166 @@ stopWords = ("a","about","above","after","again","against","all","am","an","and"
              "when's","where","where's","which","while","who","who's","whom","why",
              "why's","with","won't","would","wouldn't","you","you'd","you'll","you're",
              "you've","your","yours","yourself","yourselves")
+
 longest = ("", 0)
-allFrequencies = dict()
+allFrequencies = Counter()
 top50Words = OrderedDict()
+links = set()
+fingerPrint = list()
+
+
+def compute_and_check_similarity(content, threshold=3):
+
+    try:
+        simhash = Simhash(content)
+        for i in fingerPrint:
+            # Calculate Hamming distance between the current Simhash and stored hashes
+            distance = simhash.distance(i)
+            if distance <= threshold:
+                return True
+
+        return False
+
+    except Exception as ex:
+        print("An exception occurred during scraping:", ex)
+        return False
+
+def write_unique_urls_to_file():
+    global links
+    with open("visited_urls.txt", "w") as f:  # Open the file in append mode
+        for link in links:
+            # Subdomain counting for ics.uci.edu
+            parsed_url = urlparse(link)
+            domain = parsed_url.netloc
+            valid_domains = ["ics.uci.edu", "cs.uci.edu", "informatics.uci.edu", "stat.uci.edu"]
+            if any(domain.endswith(valid_domain) for valid_domain in valid_domains):
+                if domain not in subdomain_page_counts:
+                    subdomain_page_counts[domain] = set()
+                subdomain_page_counts[domain].add(link)
+
+            # Log the link to the output file (if unique)
+            if link not in unique_urls:
+                f.write(link + "\n")
+                unique_urls.add(link)
+
+
+def normalize_url(url):
+    parsed_url = urlparse(url)
+    normalized_scheme = parsed_url.scheme.lower()
+    normalized_netloc = parsed_url.netloc.lower().replace("www.", "")
+    normalized_path = parsed_url.path.rstrip("/")
+    normalized_url = f"{normalized_scheme}://{normalized_netloc}{normalized_path}"
+    return normalized_url
+
+def update_subdomain_page_counts(url):
+    # Extract hostname from the URL
+    hostname = urlparse(url).hostname
+    
+    # Ensure it belongs to ics.uci.edu subdomains
+    if ".ics.uci.edu" in hostname:
+        subdomain = hostname
+        
+        # Initialize the subdomain set in the dictionary if not already present
+        if subdomain not in subdomain_page_counts:
+            subdomain_page_counts[subdomain] = set()
+        
+        # Add the normalized URL to the set associated with the subdomain
+        subdomain_page_counts[subdomain].add(url)
+
+def tokenize_webpage(content):
+    word_list = []
+    word = ""
+    
+    # Use BeautifulSoup to parse and extract text from HTML content
+    soup = BeautifulSoup(content, 'html5lib')
+    
+    # Extract text, ignoring scripts and styles
+    texts = soup.get_text(" ", strip=True)
+    
+    # Tokenize using regular expression to include words and numbers
+    for ch in texts:
+        if (47 < ord(ch) < 58) or (64 < ord(ch) < 91) or (96 < ord(ch) < 123):  # Simple check for alphanumeric characters
+            word += ch
+        else:
+            if word:
+                word_list.append(word.lower())  # Convert to lower case to ignore case-sensitivity
+                word = ""  # Reset for next word
+    
+    if word:  # if there's a word left at the end, add it to the list
+        word_list.append(word.lower())
+
+    return [word for word in word_list if word not in stopWords]  # Exclude stopWords in the final list
+
 
 
 def scraper(url, resp):
-    links = extract_next_links(url, resp)
-    if links:
-        return [link for link in links if is_valid(link)]
-    else:
-        return []
+    try:
+        pageTokens = []  # Initialize pageTokens as a local variable
+        pageSimHash = 0
+        if resp.status == 200:
+            pageTokens = tokenize_webpage(resp.raw_response.content)
+            pageSimHash = Simhash(' '.join(pageTokens))
+        
+            if compute_and_check_similarity(pageSimHash):
+                    return []    
+            else:
+                fingerPrint.append(pageSimHash)  # Store the Simhash for future comparisons
+                
+            try:
+                beautSoup = BeautifulSoup(resp.raw_response.content, "html5lib")
+            except Exception as e:
+                print("Unable to create Beautiful Soup.")
+                return
+
+            bodyText = beautSoup.find('body')
+            try:
+                rawText = bodyText.get_text()
+                rawText = re.findall(r"\b[\w']+\b", rawText) #this is for checking high textual or not
+            except AttributeError:
+                print("Unable to make rawtext.")
+                return []
+
+            tooLargeFile = 10000000  # Too large for email, too large for web crawler
+            tooLittleText = 250
+            contentLenBytes = len(resp.raw_response.content) 
+            tokenizeLen = len(rawText)
+            if contentLenBytes > tooLargeFile or tokenizeLen < tooLittleText:
+                return []
+
+            unique_urls.add(url) #what we ended up actually crawling
+
+            ###ADDED FOR REPORT###
+            update_subdomain_page_counts(url)
+
+            global allFrequencies, longest
+
+            # Tokenize the webpage
+            pageTokens = tokenize_webpage(resp.raw_response.content)
+            pageWordCount = len(pageTokens)
+
+            # Update global longest page if this page has more words
+            if pageWordCount > longest[1]:
+                longest = (url, pageWordCount)
+
+            # Update global word frequencies
+            allFrequencies.update(pageTokens)
+
+            ###ADDED FOR REPORT###
+
+            with open("forMe.txt", "a") as f:  # Open the file in append mode
+                # Log the link to the output file (if unique)
+                # if link not in unique_urls:
+                f.write(url + "\n")
+            links = extract_next_links(url, resp)
+            return [link for link in links if is_valid(link)]
+        else:
+            return []
+    except HTTPError:
+        print("HTTPError")
+    except ConnectionError:
+        print("ConnectionError")
+    except Exception as e:
+        print("Exception ", e)
 
 
 def extract_next_links(url, resp):
@@ -58,106 +206,52 @@ def extract_next_links(url, resp):
     #         resp.raw_response.content: the content of the page!
     # Return a list with the hyperlinks (as strings) scrapped from resp.raw_response.content
 
-    # PART 1: CRAWL POLITELY
-    if resp.status >= 400 or resp.status == 204 or resp.status == 404 or resp.status == 601 or resp.status == 600:
-        return list()
-
-    # PART 2: PARSE
     try:
-        beautSoup = BeautifulSoup(resp.raw_response.content, "html5lib")
-    except:
-        return list()
+        if not resp.raw_response:
+            return list()
 
-    canonical = set()
-
-    # checks for canonical to reduce duplicates; will change after videos on near similarity and perfect similarity
-    for i in beautSoup.find_all("link", rel="canonical"):
-        canonicalURL = i.get("href")
-        if canonicalURL:
-            canonical.add(canonicalURL)
-
-    links = set()
-
-    # find hyperlinks to crawl:
-    # https://www.scrapingbee.com/webscraping-questions/beautifulsoup/how-to-find-all-links-using-beautifulsoup-and-python/
-    # also, this finds all links
-    for i in beautSoup.find_all("a"):
-        link = i.get("href")
-        absLink = urljoin(url, link)
-        absLink = absLink.split("#")[0]  # normalizing the link
-        if is_valid(absLink):
-            if any(canonicalLink in absLink for canonicalLink in canonical):
-                continue
-            links.add(absLink)
-
-    global unique_urls, subdomain_page_counts
-    with open("visited_urls.txt", "a") as f:  # Open the file in append mode
-        for link in links:
-            # Add to unique_urls set
-            unique_urls.add(link)
-
-            # Subdomain counting for ics.uci.edu
-            parsed_url = urlparse(link)
-            domain = parsed_url.netloc
-            valid_domains = ["ics.uci.edu", "cs.uci.edu", "informatics.uci.edu", "stat.uci.edu"]
-            if any(domain.endswith(valid_domain) for valid_domain in valid_domains):
-                if domain not in subdomain_page_counts:
-                    subdomain_page_counts[domain] = set()
-                subdomain_page_counts[domain].add(link)
-
-            # Log the link to the output file (if unique)
-            if link in unique_urls:
-                f.write(link + "\n")
+        try:
+            beautSoup = BeautifulSoup(resp.raw_response.content, "html5lib")
+        except Exception as e:
+            print("Unable to create Beautiful Soup.")
+            return
         
+        canonical = set()
 
-    # NEXT STEP: FIGURE OUT HOW TO GRAB TEXT AND PARSE WITH TOKENIZER: https://www.educative.io/answers/how-to-use-gettext-in-beautiful-soup
-    bodyText = beautSoup.find('body')
-    try:
-        rawText = bodyText.getText()
-    except AttributeError:
-        return list()
+        for i in beautSoup.find_all("link", rel="canonical"):
+            canonicalURL = i.get("href")
+            if canonicalURL:
+                canonical.add(canonicalURL)
 
-    # Check content length and token length for each link after they've been added to the set
-    for link in list(links):
-        tooLargeFile = 10000000  # Too large for email, too large for web crawler
-        tooLittleText = 250
-        contentLenBytes = len(resp.raw_response.content)
-        rawTextLen = len(rawText)
-        if contentLenBytes > tooLargeFile or rawTextLen < tooLittleText:
-            links.remove(link)
+        for i in beautSoup.find_all("a"):
+            link = i.get("href")
+            if link:
+                absLink = urljoin(url, link)
+                absLink = absLink.split("#")[0]  # Remove fragment identifiers
+                absLink = normalize_url(absLink)  # Normalize the link
+                if is_valid(absLink):
+                    if any(canonicalLink in absLink for canonicalLink in canonical):
+                        continue
+                    links.add(absLink)
+    except HTTPError:
+        print("HTTPError")
+    except ConnectionError:
+        print("ConnectionError")
+    except Exception as e:
+        print("Exception ", e)
+    
+    
 
-    tokenizePage = [text for text in rawText.split(' ') if text.isalnum() and text.isascii() and text not in stopWords]
-    global longest
-    if len(tokenizePage) > longest[1]:
-        longest = (resp.url, len(tokenizePage))
-
-    # For each token in the supplied list (on average, checked in constant time)
-        for token in tokenizePage:
-            # If the token's key-value pair in the dictionary has not been created yet
-            # (on average, checked in constant time)
-            if token not in allFrequencies:
-                # Create a key-value pair for the token
-                allFrequencies[token] = 1
-            else:
-                # Increase the value of the token's key-value pair by 1
-                allFrequencies[token] += 1
-
-    global top50Words
-    top50Words = (sorted(allFrequencies.items(), key=lambda item: (-item[1], item[0])))[:50]
-
-    # albert code here
     return list(links)
 
-
 def is_valid(url):
-
-
     # Decide whether to crawl this url or not. 
     # If you decide to crawl it, return True; otherwise return False.
     # There are already some conditions that return False.
 
     try:
         parsed = urlparse(url)
+
         if parsed.scheme not in set(["http", "https"]):
             return False
 
@@ -181,12 +275,9 @@ def is_valid(url):
         else:
             ext = ''  # No extension found
 
-        if(".php" in ext.lower()):#dynamic files
+        if(".php" in ext.lower() or ".img" in ext.lower() or ".mpg" in ext.lower() or ".gif" in ext.lower() or ".mp4" in ext.lower() or ".mov" in ext.lower() or ".avi" in ext.lower() or ".flv" in ext.lower()):#dynamic files or non textual files
             return False
 
-        if(".img" in ext.lower()):#non textual
-            return False
-    
     
         try:
             if((parsed.netloc) not in cache):#if not already in cache, process, if not dont send another request to be polite, parsed.netloc is domain
@@ -217,16 +308,28 @@ def is_valid(url):
     except TypeError:
         print ("TypeError for ", parsed)
         raise
+    except HTTPError:
+        print("HTTPError")
+    except ConnectionError:
+        print("ConnectionError")
+    except Exception as e:
+        print("Exception ", e)
+
 
 def report_stats():
-    global unique_urls, subdomain_page_counts, top50Words
+    global unique_urls, subdomain_page_counts, longest, allFrequencies
 
     print(f"Total unique pages found: {len(unique_urls)}")
     print(f"Longest page: {longest[0]} with {longest[1]} words.")
-    print(f"Top 50 common words: {top50Words}")
-    
+
+     # Print the most common words excluding the stop words, sorted by frequency
+    most_common_words = [word for word in allFrequencies.most_common(50) if word[0] not in stopWords]
+    print("Top 50 most common words (excluding stop words):")
+    for word, frequency in most_common_words:
+        print(f"{word}: {frequency}")
+
     print("Subdomains within ics.uci.edu and their unique page counts:")
     sorted_subdomains = sorted(subdomain_page_counts.items())  # Sorts by the subdomain (the dict key)
     for domain, pages in sorted_subdomains:
-        if ".ics.uci.edu" in domain:  # Ensure we only report for ics.uci.edu subdomains
+        if "ics.uci.edu" in domain:  # Ensure we only report for ics.uci.edu subdomains
             print(f"{domain}: {len(pages)} unique pages")
