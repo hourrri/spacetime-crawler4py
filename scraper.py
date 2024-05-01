@@ -14,6 +14,7 @@ unique_urls = set()  # To store unique URLs
 subdomain_page_counts = {}  # To store unique pages per subdomain in ics.uci.edu
 #####
 
+# Stopwords from https://www.ranks.nl/stopwords
 stopWords = ("a", "about", "above", "after", "again", "against", "all", "am", "an", "and", "any",
              "are", "aren't", "as", "at", "be", "because", "been", "before", "being", "below",
              "between", "both", "but", "by", "can't", "cannot", "could", "couldn't", "did",
@@ -34,9 +35,9 @@ stopWords = ("a", "about", "above", "after", "again", "against", "all", "am", "a
              "why's", "with", "won't", "would", "wouldn't", "you", "you'd", "you'll", "you're",
              "you've", "your", "yours", "yourself", "yourselves")
 
-longest = ("", 0)
-allFrequencies = Counter()
-top50Words = OrderedDict()
+longest = ("", 0)  # To keep track of the longest page
+allFrequencies = Counter()  # Frequencies of all words scraped
+top50Words = OrderedDict()  # Top 50 words (with filtering) scraped
 links = set()
 fingerPrint = list()
 
@@ -76,15 +77,6 @@ def write_unique_urls_to_file():
                 unique_urls.add(link)
 
 
-def normalize_url(url):
-    parsed_url = urlparse(url)
-    normalized_scheme = parsed_url.scheme.lower()
-    normalized_netloc = parsed_url.netloc.lower().replace("www.", "")
-    normalized_path = parsed_url.path.rstrip("/")
-    normalized_url = f"{normalized_scheme}://{normalized_netloc}{normalized_path}"
-    return normalized_url
-
-
 def update_subdomain_page_counts(url):
     # Extract hostname from the URL
     hostname = urlparse(url).hostname
@@ -102,6 +94,7 @@ def update_subdomain_page_counts(url):
 
 
 # Adapted from: https://stackoverflow.com/questions/1936466/how-to-scrape-only-visible-webpage-text-with-beautifulsoup
+# Used to only extract visible text from the webpage
 def tag_visible(element):
     if element.parent.name in ['style', 'script', 'head', 'title', 'meta', '[document]']:
         return False
@@ -115,6 +108,7 @@ def tokenize_webpage(content):
     word = ""
 
     # Adapted from: https://stackoverflow.com/questions/1936466/how-to-scrape-only-visible-webpage-text-with-beautifulsoup
+    # Extracting visible text from the webpage
     try:
         beautSoup = BeautifulSoup(content, "html5lib")
         texts = beautSoup.findAll(string=True)
@@ -123,7 +117,7 @@ def tokenize_webpage(content):
     except:
         texts = ""
 
-    # Tokenize
+    # Assignment 1 tokenization
     for ch in texts:
         if (47 < ord(ch) < 58) or (64 < ord(ch) < 91) or (
                 96 < ord(ch) < 123):  # Simple check for alphanumeric characters
@@ -210,7 +204,6 @@ def scraper(url, resp):
 
 
 def extract_next_links(url, resp):
-    # Implementation required.
     # url: the URL that was used to get the page
     # resp.url: the actual url of the page
     # resp.status: the status code returned by the server. 200 is OK, you got the page. Other numbers mean that there was some kind of problem.
@@ -242,7 +235,6 @@ def extract_next_links(url, resp):
             if link:
                 absLink = urljoin(url, link)
                 absLink = absLink.split("#")[0]  # Remove fragment identifiers
-                absLink = normalize_url(absLink)  # Normalize the link
                 if is_valid(absLink):
                     if any(canonicalLink in absLink for canonicalLink in canonical):
                         continue
@@ -281,7 +273,7 @@ def is_valid(url):
             return False
 
         if "/?s=" in url:  # if search page with will bring up a large amount of repeated information, trap
-            return False  # but im not sure if i would be filtering out content that may be useful or unique to be found only through search
+            return False
 
         url_path = parsed.path
         if '.' in url_path:
@@ -289,8 +281,9 @@ def is_valid(url):
         else:
             ext = ''  # No extension found
 
+        # dynamic files or non textual files
         if (
-                ".php" in ext.lower() or ".img" in ext.lower() or ".mpg" in ext.lower() or ".gif" in ext.lower() or ".mp4" in ext.lower() or ".mov" in ext.lower() or ".avi" in ext.lower() or ".flv" in ext.lower()):  # dynamic files or non textual files
+                ".php" in ext.lower() or ".img" in ext.lower() or ".mpg" in ext.lower() or ".gif" in ext.lower() or ".mp4" in ext.lower() or ".mov" in ext.lower() or ".avi" in ext.lower() or ".flv" in ext.lower()):
             return False
 
         try:
@@ -298,7 +291,7 @@ def is_valid(url):
                     parsed.netloc) not in cache):  # if not already in cache, process, if not dont send another request to be polite, parsed.netloc is domain
                 robot_parser = RobotFileParser()
                 robot_parser.set_url(parsed.scheme + "://" + (
-                    parsed.netloc) + "/robots.txt")  # for the purposes of Assignment 2, since we are crawling uci.edu domains, we know that this is how their robot files are found and we dont need other methods
+                    parsed.netloc) + "/robots.txt")  # for the purposes of Assignment 2, since we are crawling uci.edu domains, we know that this is how their robot files are found and we dont need to use other methods
                 robot_parser.read()
                 cache[parsed.netloc] = robot_parser
             else:
@@ -318,7 +311,7 @@ def is_valid(url):
             # return True
             else:
                 return False
-        except URLError:  # would I return false
+        except URLError:  # return false
             return False
 
     except TypeError:
@@ -338,8 +331,9 @@ def report_stats():
     print(f"Total unique pages found: {len(unique_urls)}")
     print(f"Longest page: {longest[0]} with {longest[1]} words.")
 
-    # Print the most common words excluding the stop words, sorted by frequency
-    most_common_words = [word for word in allFrequencies.most_common(85) if word[0] not in stopWords and len(word[0]) > 1]
+    # Print the most common words excluding stopwords and length 1 words, sorted by frequency
+    most_common_words = [word for word in allFrequencies.most_common(100) if
+                         word[0] not in stopWords and len(word[0]) > 1]
     print("Top 50 most common words (excluding stop words and length 1 words):")
     for word, frequency in most_common_words:
         print(f"{word}: {frequency}")
