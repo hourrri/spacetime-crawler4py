@@ -319,17 +319,21 @@ def is_valid(url):
 def report_stats():
     global unique_urls, subdomain_page_counts, longest, allFrequencies
 
-    print(f"Total unique pages found: {len(unique_urls)}")
-    print(f"Longest page: {longest[0]} with {longest[1]} words.")
+    # Open a file to write the statistics
+    with open('report.txt', 'w') as report_file:
+        report_file.write(f"Total unique pages found: {len(unique_urls)}\n")
+        report_file.write(f"Longest page: {longest[0]} with {longest[1]} words.\n")
 
-     # Print the most common words excluding the stop words, sorted by frequency
-    most_common_words = [word for word in allFrequencies.most_common(50) if word[0] not in stopWords]
-    print("Top 50 most common words (excluding stop words):")
-    for word, frequency in most_common_words:
-        print(f"{word}: {frequency}")
+        # Write the most common words excluding the stop words, sorted by frequency
+        most_common_words = [
+            word for word in allFrequencies.most_common(200)  # Increased number before filtering
+            if word[0] not in stopWords and len(word[0]) > 1
+        ]
+        
+        report_file.write(f"{most_common_words[:50]}\n")  # Write the top 50 words after filtering
 
-    print("Subdomains within ics.uci.edu and their unique page counts:")
-    sorted_subdomains = sorted(subdomain_page_counts.items())  # Sorts by the subdomain (the dict key)
-    for domain, pages in sorted_subdomains:
-        if "ics.uci.edu" in domain:  # Ensure we only report for ics.uci.edu subdomains
-            print(f"{domain}: {len(pages)} unique pages")
+        report_file.write("Subdomains within ics.uci.edu and their unique page counts:\n")
+        sorted_subdomains = sorted(subdomain_page_counts.items())  # Sorts by the subdomain (the dict key)
+        for domain, pages in sorted_subdomains:
+            if ".ics.uci.edu" in domain:  # Ensure we only report for ics.uci.edu subdomains
+                report_file.write(f"{domain}: {len(pages)} unique pages\n")
