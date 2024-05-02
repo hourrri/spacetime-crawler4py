@@ -48,7 +48,7 @@ def compute_and_check_similarity(content, threshold=3):
         for i in fingerPrint:
             # Calculate Hamming distance between the current Simhash and stored hashes
             distance = simhash.distance(i)
-            if distance <= threshold:
+            if distance < threshold:
                 return True
 
         return False
@@ -183,7 +183,7 @@ def scraper(url, resp):
                 longest = (url, pageWordCount)
 
             # Update global word frequencies
-            allFrequencies.update(pageTokens)
+            allFrequencies.update(pageToken for pageToken in pageTokens if pageToken not in stopWords)
 
             ###ADDED FOR REPORT###
 
@@ -269,10 +269,15 @@ def is_valid(url):
             # If there's a fragment, consider only the base URL without the fragment
             return False
 
-        if "/calendar?date=" in url:  # calendars have traps
+        if "/calendar" in url:  # calendars have traps
             return False
 
         if "/?s=" in url:  # if search page with will bring up a large amount of repeated information, trap
+            return False
+
+        if re.search(
+                "(\?share|/login|/signin|/auth|/account|/secure|/admin|\?attachment|&share|&ical|\?ical|/theme|/themes|/datasets.php)",
+                url) is not None:
             return False
 
         url_path = parsed.path
@@ -281,23 +286,30 @@ def is_valid(url):
         else:
             ext = ''  # No extension found
 
-        # dynamic files or non textual files
         if (
-                ".php" in ext.lower() or ".img" in ext.lower() or ".mpg" in ext.lower() or ".gif" in ext.lower() or ".mp4" in ext.lower() or ".mov" in ext.lower() or ".avi" in ext.lower() or ".flv" in ext.lower()):
+                ".img" in ext.lower() or ".mpg" in ext.lower() or ".gif" in ext.lower() or ".mov" in ext.lower() or ".flv" in ext.lower() or ".ical" in ext.lower() or ".ics" in ext.lower() or ".js" in ext.lower()):  # dynamic files or non textual files
             return False
 
         try:
             if ((
-                    parsed.netloc) not in cache):  # if not already in cache, process, if not dont send another request to be polite, parsed.netloc is domain
+            parsed.netloc) not in cache):  # if not already in cache, process, if not dont send another request to be polite, parsed.netloc is domain
                 robot_parser = RobotFileParser()
                 robot_parser.set_url(parsed.scheme + "://" + (
-                    parsed.netloc) + "/robots.txt")  # for the purposes of Assignment 2, since we are crawling uci.edu domains, we know that this is how their robot files are found and we dont need to use other methods
+                    parsed.netloc) + "/robots.txt")  # for the purposes of Assignment 2, since we are crawling uci.edu domains, we know that this is how their robot files are found and we dont need other methods
                 robot_parser.read()
                 cache[parsed.netloc] = robot_parser
             else:
                 robot_parser = cache[parsed.netloc]
 
             if (robot_parser.can_fetch("UCICrawler", url)):
+
+                if (".php" == parsed.path.lower()):
+                    query = str(url).split(".php")
+                    if "/" in query[1] or len(query) > 2:
+                        return False
+                    if str(url).count("//") > 1:
+                        return False
+
                 return not re.match(
                     r".*\.(css|js|bmp|gif|jpe?g|ico"
                     + r"|png|tiff?|mid|mp2|mp3|mp4"
@@ -328,18 +340,18 @@ def is_valid(url):
 def report_stats():
     global unique_urls, subdomain_page_counts, longest, allFrequencies
 
-    print(f"Total unique pages found: {len(unique_urls)}")
-    print(f"Longest page: {longest[0]} with {longest[1]} words.")
+    # Open a file to write the statistics
+    with open('report.txt', 'w') as report_file:
+        report_file.write(f"Total unique pages found: {len(unique_urls)}\n")
+        report_file.write(f"Longest page: {longest[0]}\n")
 
-    # Print the most common words excluding stopwords and length 1 words, sorted by frequency
-    most_common_words = [word for word in allFrequencies.most_common(100) if
-                         word[0] not in stopWords and len(word[0]) > 1]
-    print("Top 50 most common words (excluding stop words and length 1 words):")
-    for word, frequency in most_common_words:
-        print(f"{word}: {frequency}")
+        # Write the most common words excluding the stop words, sorted by frequency
+        most_common_words = [word for word in allFrequencies.most_common(50)]
 
-    print("Subdomains within ics.uci.edu and their unique page counts:")
-    sorted_subdomains = sorted(subdomain_page_counts.items())  # Sorts by the subdomain (the dict key)
-    for domain, pages in sorted_subdomains:
-        if "ics.uci.edu" in domain:  # Ensure we only report for ics.uci.edu subdomains
-            print(f"{domain}: {len(pages)} unique pages")
+        report_file.write(f"{most_common_words[:50]}\n")  # Write the top 50 words after filtering
+
+        report_file.write("Subdomains within ics.uci.edu and their unique page counts:\n")
+        sorted_subdomains = sorted(subdomain_page_counts.items())  # Sorts by the subdomain (the dict key)
+        for domain, pages in sorted_subdomains:
+            if ".ics.uci.edu" in domain:  # Ensure we only report for ics.uci.edu subdomains
+                report_file.write(f"{domain}: {len(pages)} unique pages\n")
