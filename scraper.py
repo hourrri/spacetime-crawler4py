@@ -348,7 +348,7 @@ def report_stats():
         # Write the most common words excluding the stop words, sorted by frequency
         most_common_words = [word for word in allFrequencies.most_common(50)]
 
-        report_file.write(f"{most_common_words[:50]}\n")  # Write the top 50 words after filtering
+        report_file.write(f"{most_common_words}\n")  # Write the top 50 words after filtering
 
         report_file.write("Subdomains within ics.uci.edu and their unique page counts:\n")
         sorted_subdomains = sorted(subdomain_page_counts.items())  # Sorts by the subdomain (the dict key)
