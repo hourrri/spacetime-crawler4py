@@ -150,7 +150,7 @@ def scraper(url, resp):
                 beautSoup = BeautifulSoup(resp.raw_response.content, "html5lib")
             except Exception as e:
                 print("Unable to create Beautiful Soup.")
-                return
+                return []
 
             bodyText = beautSoup.find('body')
             try:
@@ -221,7 +221,7 @@ def extract_next_links(url, resp):
             beautSoup = BeautifulSoup(resp.raw_response.content, "html5lib")
         except Exception as e:
             print("Unable to create Beautiful Soup.")
-            return
+            return list()
 
         canonical = set()
 
