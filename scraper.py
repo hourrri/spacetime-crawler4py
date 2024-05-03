@@ -250,10 +250,10 @@ def is_valid(url):
             return False
 
         try:
-            if parsed.netloc not in cache:  # if not already in cache, process, if not don't send another request to be polite, parsed.netloc is domain
+            # Check if domain's robots.txt is already cached to avoid redundant fetches
+            if parsed.netloc not in cache:
                 robot_parser = RobotFileParser()
-                robot_parser.set_url(parsed.scheme + "://" + (
-                    parsed.netloc) + "/robots.txt")  # for the purposes of Assignment 2, since we are crawling uci.edu domains, we know that this is how their robot files are found, and we don't need other methods
+                robot_parser.set_url(parsed.scheme + "://" + parsed.netloc + "/robots.txt")
                 robot_parser.read()
                 cache[parsed.netloc] = robot_parser
             else:
@@ -261,11 +261,12 @@ def is_valid(url):
 
             if robot_parser.can_fetch("UCICrawler", url):
 
-                if ".php" == parsed.path.lower():
-                    query = str(url).split(".php")
+                # Check if the URL ends with .php and additional conditions
+                if url.lower().endswith(".php"):
+                    query = url.split(".php")
                     if "/" in query[1] or len(query) > 2:
                         return False
-                    if str(url).count("//") > 1:
+                    if url.count("//") > 1:
                         return False
 
                 return not re.match(
