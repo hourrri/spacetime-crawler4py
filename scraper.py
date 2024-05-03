@@ -1,9 +1,9 @@
 import re
-from collections import Counter, OrderedDict
+from collections import Counter
 from urllib.parse import urlparse, urljoin
 from urllib.robotparser import RobotFileParser
 from urllib.error import URLError, HTTPError
-from bs4 import BeautifulSoup  # parsing
+from bs4 import BeautifulSoup
 from bs4.element import Comment
 from simhash import Simhash
 
@@ -37,7 +37,6 @@ stopWords = ("a", "about", "above", "after", "again", "against", "all", "am", "a
 
 longest = ("", 0)  # To keep track of the longest page
 allFrequencies = Counter()  # Frequencies of all words scraped
-top50Words = OrderedDict()  # Top 50 words (with filtering) scraped
 links = set()
 fingerPrint = list()
 
@@ -50,31 +49,10 @@ def compute_and_check_similarity(content, threshold=3):
             distance = simhash.distance(i)
             if distance < threshold:
                 return True
-
         return False
-
-    except Exception as ex:
-        print("An exception occurred during scraping:", ex)
+    except Exception as e:
+        print("An exception occurred during scraping:", e)
         return False
-
-
-def write_unique_urls_to_file():
-    global links
-    with open("visited_urls.txt", "w") as f:  # Open the file in append mode
-        for link in links:
-            # Subdomain counting for ics.uci.edu
-            parsed_url = urlparse(link)
-            domain = parsed_url.netloc
-            valid_domains = ["ics.uci.edu", "cs.uci.edu", "informatics.uci.edu", "stat.uci.edu"]
-            if any(domain.endswith(valid_domain) for valid_domain in valid_domains):
-                if domain not in subdomain_page_counts:
-                    subdomain_page_counts[domain] = set()
-                subdomain_page_counts[domain].add(link)
-
-            # Log the link to the output file (if unique)
-            if link not in unique_urls:
-                f.write(link + "\n")
-                unique_urls.add(link)
 
 
 def update_subdomain_page_counts(url):
@@ -114,7 +92,8 @@ def tokenize_webpage(content):
         texts = beautSoup.findAll(string=True)
         visible_texts = filter(tag_visible, texts)
         texts = u" ".join(t.strip() for t in visible_texts)
-    except:
+    except Exception as e:
+        print("Could not extract visible text from webpage:", e)
         texts = ""
 
     # Assignment 1 tokenization
@@ -135,8 +114,6 @@ def tokenize_webpage(content):
 
 def scraper(url, resp):
     try:
-        pageTokens = []  # Initialize pageTokens as a local variable
-        pageSimHash = 0
         if resp.status == 200:
             pageTokens = tokenize_webpage(resp.raw_response.content)
             pageSimHash = Simhash(' '.join(pageTokens))
@@ -146,25 +123,10 @@ def scraper(url, resp):
             else:
                 fingerPrint.append(pageSimHash)  # Store the Simhash for future comparisons
 
-            try:
-                beautSoup = BeautifulSoup(resp.raw_response.content, "html5lib")
-            except Exception as e:
-                print("Unable to create Beautiful Soup.")
-                return []
-
-            bodyText = beautSoup.find('body')
-            try:
-                rawText = bodyText.get_text()
-                rawText = re.findall(r"\b[\w']+\b", rawText)  # this is for checking high textual or not
-            except AttributeError:
-                print("Unable to make rawtext.")
-                return []
-
-            tooLargeFile = 10000000  # Too large for email, too large for web crawler
-            tooLittleText = 100
-            contentLenBytes = len(resp.raw_response.content)
-            tokenizeLen = len(rawText)
-            if contentLenBytes > tooLargeFile or tokenizeLen < tooLittleText:
+            tooLargeFile = 2000000  # Too large for email (10 MB = 10000000 characters/average word length of 5 = 2000000 words)
+            tooLittleText = 20  # Anything less than a short paragraph (20 words)
+            pageWordCount = len(pageTokens)
+            if pageWordCount > tooLargeFile or pageWordCount < tooLittleText:
                 return []
 
             unique_urls.add(url)  # what we ended up actually crawling
@@ -174,25 +136,18 @@ def scraper(url, resp):
 
             global allFrequencies, longest
 
-            # Tokenize the webpage
-            pageTokens = tokenize_webpage(resp.raw_response.content)
-            pageWordCount = len(pageTokens)
-
             # Update global longest page if this page has more words
             if pageWordCount > longest[1]:
                 longest = (url, pageWordCount)
 
-            # Update global word frequencies
+            # Update global word frequencies filtering out stopwords
             allFrequencies.update(pageToken for pageToken in pageTokens if pageToken not in stopWords)
 
-            ###ADDED FOR REPORT###
-
             with open("forMe.txt", "a") as f:  # Open the file in append mode
-                # Log the link to the output file (if unique)
-                # if link not in unique_urls:
+                # Log the link to the output file
                 f.write(url + "\n")
-            links = extract_next_links(url, resp)
-            return [link for link in links if is_valid(link)]
+            myLinks = extract_next_links(url, resp)
+            return [link for link in myLinks if is_valid(link)]
         else:
             return []
     except HTTPError:
@@ -223,7 +178,7 @@ def extract_next_links(url, resp):
         try:
             beautSoup = BeautifulSoup(resp.raw_response.content, "html5lib")
         except Exception as e:
-            print("Unable to create Beautiful Soup.")
+            print("Unable to create Beautiful Soup:", e)
             return list()
 
         canonical = set()
@@ -263,13 +218,12 @@ def is_valid(url):
     try:
         parsed = urlparse(url)
 
-        if parsed.scheme not in set(["http", "https"]):
+        if parsed.scheme not in {"http", "https"}:
             return False
 
         domain_regex = r'^(?:[a-zA-Z0-9-]+\.)?(ics\.uci\.edu|cs\.uci\.edu|stat\.uci\.edu|informatics\.uci\.edu)$'
         if not re.match(domain_regex, parsed.netloc): return False
 
-        base_url = parsed.scheme + "://" + parsed.netloc + parsed.path
         if parsed.fragment:
             # If there's a fragment, consider only the base URL without the fragment
             return False
@@ -291,24 +245,23 @@ def is_valid(url):
         else:
             ext = ''  # No extension found
 
-        if (
-                ".img" in ext.lower() or ".mpg" in ext.lower() or ".gif" in ext.lower() or ".mov" in ext.lower() or ".flv" in ext.lower() or ".ical" in ext.lower() or ".ics" in ext.lower() or ".js" in ext.lower()):  # dynamic files or non textual files
+        extLower = ext.lower()
+        if ".img" in extLower or ".mpg" in extLower or ".gif" in extLower or ".mov" in extLower or ".flv" in extLower or ".ical" in extLower or ".ics" in extLower or ".js" in extLower:  # dynamic files or non textual files
             return False
 
         try:
-            if ((
-                    parsed.netloc) not in cache):  # if not already in cache, process, if not dont send another request to be polite, parsed.netloc is domain
+            if parsed.netloc not in cache:  # if not already in cache, process, if not don't send another request to be polite, parsed.netloc is domain
                 robot_parser = RobotFileParser()
                 robot_parser.set_url(parsed.scheme + "://" + (
-                    parsed.netloc) + "/robots.txt")  # for the purposes of Assignment 2, since we are crawling uci.edu domains, we know that this is how their robot files are found and we dont need other methods
+                    parsed.netloc) + "/robots.txt")  # for the purposes of Assignment 2, since we are crawling uci.edu domains, we know that this is how their robot files are found, and we don't need other methods
                 robot_parser.read()
                 cache[parsed.netloc] = robot_parser
             else:
                 robot_parser = cache[parsed.netloc]
 
-            if (robot_parser.can_fetch("UCICrawler", url)):
+            if robot_parser.can_fetch("UCICrawler", url):
 
-                if (".php" == parsed.path.lower()):
+                if ".php" == parsed.path.lower():
                     query = str(url).split(".php")
                     if "/" in query[1] or len(query) > 2:
                         return False
@@ -325,14 +278,13 @@ def is_valid(url):
                     + r"|thmx|mso|arff|rtf|jar|csv"
                     + r"|rm|smil|wmv|swf|wma|zip|rar|gz)$", parsed.path.lower())
 
-            # return True
             else:
                 return False
-        except URLError:  # return false
+        except URLError:
             return False
 
     except TypeError:
-        print("TypeError for ", parsed)
+        print("TypeError")
         return False
     except HTTPError:
         print("HTTPError")
