@@ -82,7 +82,7 @@ def update_subdomain_page_counts(url):
     hostname = urlparse(url).hostname
 
     # Ensure it belongs to ics.uci.edu subdomains
-    if ".ics.uci.edu" in hostname:
+    if ".ics.uci.edu" in hostname and not (hostname == "ics.uci.edu" or hostname == "www.ics.uci.edu"):
         subdomain = hostname
 
         # Initialize the subdomain set in the dictionary if not already present
@@ -161,7 +161,7 @@ def scraper(url, resp):
                 return []
 
             tooLargeFile = 10000000  # Too large for email, too large for web crawler
-            tooLittleText = 250
+            tooLittleText = 100
             contentLenBytes = len(resp.raw_response.content)
             tokenizeLen = len(rawText)
             if contentLenBytes > tooLargeFile or tokenizeLen < tooLittleText:
@@ -197,10 +197,13 @@ def scraper(url, resp):
             return []
     except HTTPError:
         print("HTTPError")
+        return []
     except ConnectionError:
         print("ConnectionError")
+        return []
     except Exception as e:
         print("Exception ", e)
+        return []
 
 
 def extract_next_links(url, resp):
@@ -225,26 +228,29 @@ def extract_next_links(url, resp):
 
         canonical = set()
 
-        for i in beautSoup.find_all("link", rel="canonical"):
-            canonicalURL = i.get("href")
+        # Extract canonical links
+        for tag in beautSoup.find_all("link", rel="canonical"):
+            canonicalURL = tag.get("href")
             if canonicalURL:
                 canonical.add(canonicalURL)
 
-        for i in beautSoup.find_all("a"):
-            link = i.get("href")
+        # Extract links from anchor tags
+        for tag in beautSoup.find_all("a", href=True):
+            link = tag.get("href")
             if link:
                 absLink = urljoin(url, link)
                 absLink = absLink.split("#")[0]  # Remove fragment identifiers
-                if is_valid(absLink):
-                    if any(canonicalLink in absLink for canonicalLink in canonical):
-                        continue
+                if is_valid(absLink) and absLink not in canonical:  # Check if link is valid and not canonical
                     links.add(absLink)
     except HTTPError:
         print("HTTPError")
+        return list()
     except ConnectionError:
         print("ConnectionError")
+        return list()
     except Exception as e:
         print("Exception ", e)
+        return list()
 
     return list(links)
 
@@ -260,9 +266,8 @@ def is_valid(url):
         if parsed.scheme not in set(["http", "https"]):
             return False
 
-        if not re.match(r'^(\w*.)(ics.uci.edu|cs.uci.edu|stat.uci.edu|informatics.uci.edu)$',
-                        parsed.netloc):  # filter out domains not valid for this assignment
-            return False
+        domain_regex = r'^(?:[a-zA-Z0-9-]+\.)?(ics\.uci\.edu|cs\.uci\.edu|stat\.uci\.edu|informatics\.uci\.edu)$'
+        if not re.match(domain_regex, parsed.netloc): return False
 
         base_url = parsed.scheme + "://" + parsed.netloc + parsed.path
         if parsed.fragment:
@@ -292,7 +297,7 @@ def is_valid(url):
 
         try:
             if ((
-            parsed.netloc) not in cache):  # if not already in cache, process, if not dont send another request to be polite, parsed.netloc is domain
+                    parsed.netloc) not in cache):  # if not already in cache, process, if not dont send another request to be polite, parsed.netloc is domain
                 robot_parser = RobotFileParser()
                 robot_parser.set_url(parsed.scheme + "://" + (
                     parsed.netloc) + "/robots.txt")  # for the purposes of Assignment 2, since we are crawling uci.edu domains, we know that this is how their robot files are found and we dont need other methods
@@ -328,13 +333,16 @@ def is_valid(url):
 
     except TypeError:
         print("TypeError for ", parsed)
-        raise
+        return False
     except HTTPError:
         print("HTTPError")
+        return False
     except ConnectionError:
         print("ConnectionError")
+        return False
     except Exception as e:
         print("Exception ", e)
+        return False
 
 
 def report_stats():
