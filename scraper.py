@@ -264,10 +264,10 @@ def is_valid(url):
             return False
 
         try:
-            if parsed.netloc not in cache:  # if not already in cache, process, if not dont send another request to be polite, parsed.netloc is domain
+            if parsed.netloc not in cache:  # if not already in cache, process, if not don't send another request to be polite, parsed.netloc is domain
                 robot_parser = RobotFileParser()
                 robot_parser.set_url(parsed.scheme + "://" + (
-                    parsed.netloc) + "/robots.txt")  # for the purposes of Assignment 2, since we are crawling uci.edu domains, we know that this is how their robot files are found, and we dont need other methods
+                    parsed.netloc) + "/robots.txt")  # for the purposes of Assignment 2, since we are crawling uci.edu domains, we know that this is how their robot files are found, and we don't need other methods
                 robot_parser.read()
                 cache[parsed.netloc] = robot_parser
             else:
@@ -292,10 +292,9 @@ def is_valid(url):
                     + r"|thmx|mso|arff|rtf|jar|csv"
                     + r"|rm|smil|wmv|swf|wma|zip|rar|gz)$", parsed.path.lower())
 
-            # return True
             else:
                 return False
-        except URLError:  # return false
+        except URLError:
             return False
 
     except TypeError:
