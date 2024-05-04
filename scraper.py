@@ -163,10 +163,6 @@ def scraper(url, resp):
             # Update global word frequencies filtering out stopwords
             allFrequencies.update(pageToken for pageToken in pageTokens if pageToken not in stopWords)
 
-            with open("forMe.txt", "a") as f:  # Open the file in append mode
-                # Log the link to the output file (if unique)
-                # if link not in unique_urls:
-                f.write(url + "\n")
             myLinks = extract_next_links(url, resp)
             return [link for link in myLinks if is_valid(link)]
         else:
