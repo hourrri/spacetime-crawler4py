@@ -49,7 +49,9 @@ def compute_and_check_similarity(content, threshold=3):
             distance = simhash.distance(i)
             if distance < threshold:
                 return True
+
         return False
+
     except Exception as e:
         print("An exception occurred during scraping:", e)
         return False
@@ -60,7 +62,7 @@ def update_subdomain_page_counts(url):
     hostname = urlparse(url).hostname
 
     # Ensure it belongs to ics.uci.edu subdomains
-    if ".ics.uci.edu" in hostname and not (hostname == "ics.uci.edu" or hostname == "www.ics.uci.edu"):
+    if ".ics.uci.edu" in hostname:
         subdomain = hostname
 
         # Initialize the subdomain set in the dictionary if not already present
@@ -123,10 +125,25 @@ def scraper(url, resp):
             else:
                 fingerPrint.append(pageSimHash)  # Store the Simhash for future comparisons
 
-            tooLargeFile = 2000000  # Too large for email (10 MB = 10000000 characters/average word length of 5 = 2000000 words)
-            tooLittleText = 20  # Anything less than a short paragraph (20 words)
-            pageWordCount = len(pageTokens)
-            if pageWordCount > tooLargeFile or pageWordCount < tooLittleText:
+            try:
+                beautSoup = BeautifulSoup(resp.raw_response.content, "html5lib")
+            except Exception as e:
+                print("Unable to create Beautiful Soup:", e)
+                return []
+
+            bodyText = beautSoup.find('body')
+            try:
+                rawText = bodyText.get_text()
+                rawText = re.findall(r"\b[\w']+\b", rawText)  # this is for checking high textual or not
+            except AttributeError:
+                print("Unable to make rawtext.")
+                return []
+
+            tooLargeFile = 10000000  # Too large for email, too large for web crawler
+            tooLittleText = 250
+            contentLenBytes = len(resp.raw_response.content)
+            tokenizeLen = len(rawText)
+            if contentLenBytes > tooLargeFile or tokenizeLen < tooLittleText:
                 return []
 
             unique_urls.add(url)  # what we ended up actually crawling
@@ -136,6 +153,9 @@ def scraper(url, resp):
 
             global allFrequencies, longest
 
+            # Amount of tokens in webpage
+            pageWordCount = len(pageTokens)
+
             # Update global longest page if this page has more words
             if pageWordCount > longest[1]:
                 longest = (url, pageWordCount)
@@ -144,7 +164,8 @@ def scraper(url, resp):
             allFrequencies.update(pageToken for pageToken in pageTokens if pageToken not in stopWords)
 
             with open("forMe.txt", "a") as f:  # Open the file in append mode
-                # Log the link to the output file
+                # Log the link to the output file (if unique)
+                # if link not in unique_urls:
                 f.write(url + "\n")
             myLinks = extract_next_links(url, resp)
             return [link for link in myLinks if is_valid(link)]
@@ -152,13 +173,10 @@ def scraper(url, resp):
             return []
     except HTTPError:
         print("HTTPError")
-        return []
     except ConnectionError:
         print("ConnectionError")
-        return []
     except Exception as e:
         print("Exception ", e)
-        return []
 
 
 def extract_next_links(url, resp):
@@ -183,29 +201,26 @@ def extract_next_links(url, resp):
 
         canonical = set()
 
-        # Extract canonical links
-        for tag in beautSoup.find_all("link", rel="canonical"):
-            canonicalURL = tag.get("href")
+        for i in beautSoup.find_all("link", rel="canonical"):
+            canonicalURL = i.get("href")
             if canonicalURL:
                 canonical.add(canonicalURL)
 
-        # Extract links from anchor tags
-        for tag in beautSoup.find_all("a", href=True):
-            link = tag.get("href")
+        for i in beautSoup.find_all("a"):
+            link = i.get("href")
             if link:
                 absLink = urljoin(url, link)
                 absLink = absLink.split("#")[0]  # Remove fragment identifiers
-                if is_valid(absLink) and absLink not in canonical:  # Check if link is valid and not canonical
+                if is_valid(absLink):
+                    if any(canonicalLink in absLink for canonicalLink in canonical):
+                        continue
                     links.add(absLink)
     except HTTPError:
         print("HTTPError")
-        return list()
     except ConnectionError:
         print("ConnectionError")
-        return list()
     except Exception as e:
         print("Exception ", e)
-        return list()
 
     return list(links)
 
@@ -221,8 +236,9 @@ def is_valid(url):
         if parsed.scheme not in {"http", "https"}:
             return False
 
-        domain_regex = r'^(?:[a-zA-Z0-9-]+\.)?(ics\.uci\.edu|cs\.uci\.edu|stat\.uci\.edu|informatics\.uci\.edu)$'
-        if not re.match(domain_regex, parsed.netloc): return False
+        if not re.match(r'^(\w*.)(ics.uci.edu|cs.uci.edu|stat.uci.edu|informatics.uci.edu)$',
+                        parsed.netloc):  # filter out domains not valid for this assignment
+            return False
 
         if parsed.fragment:
             # If there's a fragment, consider only the base URL without the fragment
@@ -234,9 +250,7 @@ def is_valid(url):
         if "/?s=" in url:  # if search page with will bring up a large amount of repeated information, trap
             return False
 
-        if re.search(
-                "(\?share|/login|/signin|/auth|/account|/secure|/admin|\?attachment|&share|&ical|\?ical|/theme|/themes|/datasets.php)",
-                url) is not None:
+        if re.search("(\?share|/login|/signin|/auth|/account|/secure|/admin|\?attachment|&share|&ical|\?ical|/theme|/themes|/datasets.php)", url) is not None:
             return False
 
         url_path = parsed.path
@@ -250,10 +264,10 @@ def is_valid(url):
             return False
 
         try:
-            # Check if domain's robots.txt is already cached to avoid redundant fetches
-            if parsed.netloc not in cache:
+            if parsed.netloc not in cache:  # if not already in cache, process, if not dont send another request to be polite, parsed.netloc is domain
                 robot_parser = RobotFileParser()
-                robot_parser.set_url(parsed.scheme + "://" + parsed.netloc + "/robots.txt")
+                robot_parser.set_url(parsed.scheme + "://" + (
+                    parsed.netloc) + "/robots.txt")  # for the purposes of Assignment 2, since we are crawling uci.edu domains, we know that this is how their robot files are found, and we dont need other methods
                 robot_parser.read()
                 cache[parsed.netloc] = robot_parser
             else:
@@ -261,12 +275,11 @@ def is_valid(url):
 
             if robot_parser.can_fetch("UCICrawler", url):
 
-                # Check if the URL ends with .php and additional conditions
-                if url.lower().endswith(".php"):
-                    query = url.split(".php")
+                if ".php" == parsed.path.lower():
+                    query = str(url).split(".php")
                     if "/" in query[1] or len(query) > 2:
                         return False
-                    if url.count("//") > 1:
+                    if str(url).count("//") > 1:
                         return False
 
                 return not re.match(
@@ -279,23 +292,21 @@ def is_valid(url):
                     + r"|thmx|mso|arff|rtf|jar|csv"
                     + r"|rm|smil|wmv|swf|wma|zip|rar|gz)$", parsed.path.lower())
 
+            # return True
             else:
                 return False
-        except URLError:
+        except URLError:  # return false
             return False
 
     except TypeError:
         print("TypeError")
-        return False
+        raise
     except HTTPError:
         print("HTTPError")
-        return False
     except ConnectionError:
         print("ConnectionError")
-        return False
     except Exception as e:
         print("Exception ", e)
-        return False
 
 
 def report_stats():
